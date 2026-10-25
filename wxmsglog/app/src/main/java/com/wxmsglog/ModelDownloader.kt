@@ -49,13 +49,18 @@ object ModelDownloader {
     /**
      * 下载并落盘。阻塞调用，必须放工作线程。
      *
+     * 参数顺序有讲究：onProgress 必须放最后。Kotlin 的尾随 lambda 只会绑定
+     * 到最后一个参数，之前把 attempt 放在后面，调用方的 { .. } 就被当成 Int
+     * 传进去了，编译直接报类型不匹配。
+     *
+     * @param attempt 内部用：416 重试计数，调用方不用传。
      * @return 下好的文件；失败或被取消返回 null（.part 会保留，下次能续）。
      */
     fun download(
         context: Context,
         spec: ModelCatalog.Spec,
-        onProgress: (downloaded: Long, total: Long) -> Unit,
         attempt: Int = 0,
+        onProgress: (downloaded: Long, total: Long) -> Unit,
     ): File? {
         cancelled = false
         val dir = ModelStore.dir(context)
@@ -109,7 +114,7 @@ object ModelDownloader {
                 conn.disconnect()
                 part.delete()
                 return if (attempt < 1) {
-                    download(context, spec, onProgress, attempt + 1)
+                    download(context, spec, attempt + 1, onProgress)
                 } else {
                     null
                 }

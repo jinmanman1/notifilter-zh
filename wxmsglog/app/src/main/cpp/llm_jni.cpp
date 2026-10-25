@@ -97,8 +97,10 @@ Java_com_wxmsglog_Llm_nativeLoad(JNIEnv * env, jobject /*thiz*/,
 
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = 0;      // 纯 CPU：GPU 后端在国产 ROM 上驱动差异太大，不碰
-    mp.use_mmap     = true;   // 1.3GB 靠 mmap 按需换入，比整块读进内存稳
-    mp.use_mlock    = false;  // 安卓上 mlock 会触发 OOM killer
+    // v0.7.0 用 load_mode 枚举取代了老的 use_mmap / use_mlock 两个开关。
+    // LLAMA_LOAD_MODE_MMAP 就是原来 use_mmap=true 的语义：1.3GB 按页换入，
+    // 不会在加载时整块读进内存。不碰 mlock——安卓上锁内存会招来 OOM killer。
+    mp.load_mode = LLAMA_LOAD_MODE_MMAP;
 
     llama_model * model = llama_model_load_from_file(path.c_str(), mp);
     if (!model) {
