@@ -1,5 +1,12 @@
 name: 编译 APK
 
+# 重要：这份文件放在子目录里，GitHub 不会把它当成 workflow——它只扫描仓库
+# 根目录的 .github/workflows/。真正生效的是仓库根那份 build-wxmsglog.yml，
+# 名字叫「编译微信消息存档」，构建时 working-directory 指向 wxmsglog。
+#
+# 这份文件留在这里是当草稿用：改完记得同步到根目录那份，两边内容应当一致，
+# 只差一个路径前缀。
+
 on:
   push:
   workflow_dispatch:
@@ -46,9 +53,13 @@ jobs:
       - name: 安装 NDK 与 CMake
         if: steps.toolchain.outputs.cache-hit != 'true'
         run: |
-          set -euo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          set -eo pipefail
+          SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # yes 在 sdkmanager 读够输入后会收到 SIGPIPE，配合 pipefail 会把整条
+          # 管道判成失败。许可这步单独做并显式兜住。
+          yes | "$SDK" --licenses > /dev/null 2>&1 || true
+          # 安装不再套管道：真出错要让它把错误打出来，而不是被 || true 吞掉
+          "$SDK" "ndk;27.0.12077973" "cmake;3.22.1"
           echo "NDK: $(ls "$ANDROID_HOME/ndk")"
 
       # llama.cpp 源码不进仓库（几百兆）。这里按 tag 拉一份固定版本，

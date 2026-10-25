@@ -253,7 +253,6 @@
     <string name="battery_done">已经忽略电池优化了</string>
     <string name="battery_no_page">系统不允许直接申请，已打开电池优化列表，请手动找到本应用并设为「不限制」</string>
     <string name="autostart_no_page">系统里没有独立的自启动页，已打开应用详情，请手动开启自启动和后台运行</string>
-    <string name="autostart_no_page">系统里没有独立的自启动页，已打开应用详情，请手动开启自启动和后台运行</string>
 
     <!-- ========== AI 模型管理 ========== -->
     <string name="title_model">AI 模型</string>
