@@ -48,9 +48,13 @@ jobs:
       - name: 安装 NDK 与 CMake
         if: steps.toolchain.outputs.cache-hit != 'true'
         run: |
-          set -euo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          set -eo pipefail
+          SDK="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # yes 在 sdkmanager 读够输入后会收到 SIGPIPE，配合 pipefail 会把整条
+          # 管道判成失败（上一次构建就栽在这里）。许可这步单独做并显式兜住。
+          yes | "$SDK" --licenses > /dev/null 2>&1 || true
+          # 安装不再套管道：真出错要让它把错误打出来，而不是被 || true 吞掉
+          "$SDK" "ndk;27.0.12077973" "cmake;3.22.1"
           echo "NDK: $(ls "$ANDROID_HOME/ndk")"
 
       # llama.cpp 源码几百兆，不进仓库，按固定 tag 现拉
