@@ -1,7 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#07C160</color>
-    <color name="primary_dark">#059A4C</color>
-    <color name="accent">#07C160</color>
-    <color name="hint">#888888</color>
+    <!--
+      纯黑主题。窗口底色是 #000000：OLED 屏上黑色像素不发光，夜里看着不刺眼，
+      也比深灰省一点电。层次只靠很淡的描边和半透明白，不用大块灰面。
+      点缀色用暖金 #EAC97C：黑底上不刺眼，又比纯白更有层次。
+    -->
+    <color name="bg">#FF000000</color>
+    <color name="appbar">#FF000000</color>
+
+    <color name="primary">#FFEAC97C</color>
+    <color name="accent">#FFEAC97C</color>
+
+    <color name="text_primary">#FFEDEDED</color>
+    <color name="text_secondary">#FF9E9E9E</color>
+    <color name="hint">#FF7F7F84</color>
+
+    <color name="warn_bg">#FF231707</color>
+    <color name="warn_fg">#FFF0B366</color>
+    <color name="divider">#1FFFFFFF</color>
+
+    <!-- 筛选条件胶囊 -->
+    <color name="chip_stroke">#33FFFFFF</color>
+    <color name="chip_on_bg">#2EEAC97C</color>
+
+    <!-- 文本框底色 -->
+    <color name="card_bg">#FF0C0C0E</color>
+
+    <!-- 多选 -->
+    <color name="sel_bg">#33EAC97C</color>
+    <color name="sel_bar_bg">#FF141210</color>
+
+    <!-- 按钮底色与来源标签底色 -->
+    <color name="btn_bg">#FF1B1B1F</color>
+    <color name="tag_bg">#FF2A2A2E</color>
+
+    <color name="danger">#FFFF6B60</color>
+
+    <!-- 搜索命中高亮：金色半透明底，文字本身不改色，黑底上依然清楚 -->
+    <color name="hl_bg">#59EAC97C</color>
+
+    <!-- 桌面图标底板：纯黑，配三条金线 -->
+    <color name="icon_bg">#FF000000</color>
 </resources>

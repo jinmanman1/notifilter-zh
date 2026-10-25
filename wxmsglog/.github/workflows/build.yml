@@ -7,7 +7,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 多了 NDK 编 llama.cpp 这一步，二十分钟起步，30 分钟不够
+    timeout-minutes: 60
 
     steps:
       - name: 取源码
@@ -30,6 +31,37 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null 2>&1 || true
           echo "平台: $(ls "$ANDROID_HOME/platforms" | tr '\n' ' ')"
+
+      # NDK 有 1G 多，每次都下太浪费。路径写死是因为 actions/cache 的 path
+      # 不支持 bash 变量展开，而 runner 镜像里 SDK 位置是固定的。
+      - name: 缓存 NDK 与 CMake
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: ndk-27.0.12077973-cmake-3.22.1
+
+      - name: 安装 NDK 与 CMake
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          echo "NDK: $(ls "$ANDROID_HOME/ndk")"
+
+      # llama.cpp 源码不进仓库（几百兆）。这里按 tag 拉一份固定版本，
+      # llm_jni.cpp 里的 API 就是对着 v0.7.0 的 llama.h 写的。
+      - name: 缓存 llama.cpp
+        id: llamacpp
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/cpp/llama.cpp
+          key: llama-cpp-v0.7.0
+
+      - name: 拉取 llama.cpp
+        run: bash tools/clone_llama.sh
 
       - name: 编译 release
         run: gradle app:assembleRelease --no-daemon --stacktrace

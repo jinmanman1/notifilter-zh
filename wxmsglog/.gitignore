@@ -10,3 +10,6 @@ captures/
 *.keystore
 aligned.apk
 WxMsgLog.apk
+
+# llama.cpp 源码由 tools/clone_llama.sh 现拉，不进仓库
+app/src/main/cpp/llama.cpp/

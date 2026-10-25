@@ -1,8 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.WxMsgLog" parent="Theme.AppCompat.DayNight.DarkActionBar">
+    <!--
+      固定深色主题：父样式用 AppCompat.NoActionBar（不是 DayNight），
+      无论系统是浅色还是深色，界面都是纯黑底，不会再跟着系统变白。
+      NoActionBar：自绘顶栏，这样顶栏背景色能延伸到状态栏下面（沉浸式）。
+      windowLayoutInDisplayCutoutMode=shortEdges：刘海屏/挖孔屏不再留黑边。
+    -->
+    <style name="Theme.WxMsgLog" parent="Theme.AppCompat.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorPrimaryDark">@color/bg</item>
         <item name="colorAccent">@color/accent</item>
+
+        <!-- 控件配色：按钮深灰底、绿色文字，输入框光标/下划线用绿色 -->
+        <item name="colorButtonNormal">@color/btn_bg</item>
+        <item name="colorControlNormal">@color/text_secondary</item>
+        <item name="colorControlActivated">@color/primary</item>
+        <item name="colorControlHighlight">#33FFFFFF</item>
+
+        <!-- 窗口与文字：整屏纯黑，正文浅灰白 -->
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/hint</item>
+
+        <!-- 状态栏、导航栏都透明，让黑底一路铺到屏幕边缘，图标用浅色 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+
+        <!-- 所有 AlertDialog 都走深色，默认白底在纯黑界面里太跳，浅色文字也看不清 -->
+        <item name="alertDialogTheme">@style/Theme.WxMsgLog.Dialog</item>
+    </style>
+
+    <!--
+      深色对话框。默认的 AlertDialog 是白底，在纯黑界面里会突兀，
+      而且正文颜色已经改成浅灰白，白底上会看不清。
+      只有明确指定 R.style.Theme_WxMsgLog_Dialog 的地方才用它，不动全局。
+    -->
+    <style name="Theme.WxMsgLog.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="colorAccent">@color/accent</item>
+        <item name="colorControlActivated">@color/primary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/hint</item>
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:colorBackground">@color/card_bg</item>
     </style>
 </resources>

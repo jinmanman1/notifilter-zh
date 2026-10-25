@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 黑底金条的桌面图标。背景用纯黑，前景是 ic_launcher_foreground 里的三条金线。 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/icon_bg" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

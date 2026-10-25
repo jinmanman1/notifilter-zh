@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 13 起支持「主题图标」：系统只用 monochrome 层的形状，颜色由壁纸主题决定。
+  多这一层，开启主题图标后本应用不会显得格格不入；不开启时行为与 v26 版一致。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/icon_bg" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

@@ -1,38 +1,323 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">微信消息存档</string>
+    <string name="app_name">消息存档</string>
 
-    <string name="status_on">已获得通知使用权，正在记录微信消息</string>
-    <string name="status_off">尚未获得通知使用权，现在收不到任何消息</string>
-    <string name="btn_grant">开启通知使用权</string>
+    <!-- 主界面 -->
+    <string name="title_main">消息存档</string>
+    <string name="cd_settings">设置</string>
+    <string name="cd_back">返回</string>
+    <string name="cd_search">搜索</string>
 
-    <string name="btn_copy_all">复制全部</string>
-    <string name="btn_copy_today">复制今天</string>
+    <string name="tab_list">记录</string>
+    <string name="tab_person">按人</string>
+    <string name="tab_text">文本</string>
+
+    <string name="search_hint">搜内容；@ 限定发信人；空格分隔多个词</string>
+    <string name="search_empty">没有匹配的消息</string>
+
+    <string name="perm_title">还差一步：开启通知使用权</string>
+    <string name="perm_desc">系统不允许普通应用直接读通知，必须由你手动授权。开启后本应用才能收到微信等应用的消息。</string>
+    <string name="btn_grant">去开启</string>
+
+    <string name="status_recording">正在记录：%1$s</string>
+    <string name="status_recording_all">正在记录：全部应用</string>
+    <string name="status_none">还没有选择要监听的应用，请进设置勾选</string>
+    <string name="status_with_latest">%1$s · 最近一条 %2$s</string>
+
+    <string name="stale_hint">最近一条已经是 %1$s。系统可能把监听回收了，消息不会再被记录。</string>
+    <string name="btn_rebind">重启监听</string>
+    <string name="rebind_done">已请求重新连接，等几秒再回来看</string>
+
+    <string name="ph_hint">有 %1$d 条通知只说了「你收到一条新消息」，没有正文</string>
+    <string name="ph_btn">怎么开</string>
+    <string name="ph_title">开启消息详情</string>
+    <string name="ph_msg">微信把通知正文藏起来了，系统通知里只有「你收到一条新消息」，这种通知抓不到内容，所以没存进记录。\n\n打开方式：微信 → 我 → 设置 → 消息通知 → 打开「通知显示消息详情」。\n\n其他应用同理，在各自的「通知」设置里找「显示消息内容 / 在锁屏上显示内容」。开了之后新收到的消息才会带上正文，之前的补不回来。</string>
+    <string name="ph_ok">知道了</string>
+
+    <!-- 待办 -->
+    <string name="title_todo">待办</string>
+    <string name="todo_add">新建待办</string>
+    <string name="todo_empty">还没有待办\n点右上角的 + 新建一条</string>
+    <string name="todo_sec_open">未完成</string>
+    <string name="todo_sec_done">已完成</string>
+    <string name="todo_sec_count">%1$d 项</string>
+    <string name="todo_toggle">切换完成状态</string>
+    <string name="todo_new">新建待办</string>
+    <string name="todo_edit">编辑待办</string>
+    <string name="todo_save">保存</string>
+    <string name="todo_cancel">取消</string>
+    <string name="todo_delete">删除</string>
+    <string name="todo_delete_confirm">删除「%1$s」？</string>
+    <string name="todo_empty_text">写点什么再保存</string>
+    <string name="todo_hint_text">要做什么</string>
+    <string name="todo_due_none">不提醒</string>
+    <string name="todo_due_at">%1$s 提醒</string>
+    <string name="todo_due_pick">设时间</string>
+    <string name="todo_due_clear">清除</string>
+    <string name="todo_notify_title">待办提醒</string>
+    <string name="todo_warn_notify">通知权限没开，到点不会弹提醒</string>
+    <string name="todo_warn_notify_btn">去开启</string>
+    <string name="todo_warn_exact">精确闹钟没授权，提醒可能晚几十分钟</string>
+    <string name="channel_todo">待办提醒</string>
+    <string name="channel_todo_desc">待办到点时发通知</string>
+
+    <!-- 从消息生成待办 -->
+    <string name="pick_title">生成待办</string>
+    <string name="pick_hint">按消息里出现的时间和「记得 / 麻烦 / 发我」这类词挑出来的，没认出时间的留空。时间按消息发出那一刻推算，长按可以改。</string>
+    <string name="pick_empty">这些消息里没找到像待办的内容。\n点这里把它们拼成一条，自己改。</string>
+    <string name="pick_all">全选</string>
+    <string name="pick_none">全不选</string>
+    <string name="pick_count">已选 %1$d 项</string>
+    <string name="pick_add">添加</string>
+    <string name="pick_added">已添加 %1$d 条待办</string>
+    <string name="pick_group_none">没识别到时间</string>
+    <string name="pick_group_count">%1$d 项</string>
+    <string name="pick_no_time">没识别到时间</string>
+    <string name="pick_none_picked">还没勾选任何一条</string>
+    <string name="pick_toggle">勾选这条</string>
+    <string name="pick_edit_time">这条的时间</string>
+    <string name="pick_edit_pick">改时间</string>
+    <string name="pick_edit_clear">不设时间</string>
+
+    <string name="unknown_sender">未知发信人</string>
+
+    <!-- 多选 -->
+    <string name="sel_count">已选 %1$d 条</string>
+    <string name="sel_copy">复制</string>
+    <string name="sel_todo">待办</string>
+    <string name="sel_todo_empty">没有选中消息</string>
+    <string name="sel_delete">删除</string>
+    <string name="sel_cancel">取消</string>
+    <string name="sel_delete_confirm">删除选中的 %1$d 条消息？删了就找不回来。</string>
+    <string name="sel_deleted">已删除 %1$d 条</string>
+
+    <!-- 筛选 -->
+    <string name="filter_all_apps">全部应用</string>
+    <string name="filter_all_time">全部时间</string>
+    <string name="filter_clear">清除筛选</string>
+    <string name="filter_app_title">按应用筛选</string>
+    <string name="filter_time_title">按时间筛选</string>
+    <string name="app_option_all">全部应用（%1$d 条）</string>
+    <string name="app_option">%1$s（%2$d 条）</string>
+    <string name="filter_empty">当前筛选条件下没有消息，换个应用或时间试试</string>
+
+    <string name="time_today">今天</string>
+    <string name="time_yesterday">昨天</string>
+    <string name="time_7d">最近 7 天</string>
+    <string name="time_30d">最近 30 天</string>
+    <string name="time_all">全部时间</string>
+    <string name="time_custom">自定义区间…</string>
+    <string name="pick_start_date">选择开始日期</string>
+    <string name="pick_end_date">选择结束日期</string>
+    <string name="range_swapped">结束时间早于开始时间，已自动对调</string>
+    <string name="range_custom_label">%1$s → %2$s</string>
+
+    <!-- 列表分组 -->
+    <string name="group_count">%1$d 条</string>
+    <string name="group_copy">复制</string>
+
+    <string name="empty_hint">还没有记录到消息\n\n1、点上面的按钮开启通知使用权\n2、在设置里确认「监听的应用」勾选了微信\n3、之后微信来消息就会自动存到本地</string>
+    <string name="text_empty">当前筛选条件下没有消息</string>
+    <string name="text_pending">有新消息 · 点击刷新</string>
+
+    <string name="footer_total">共 %1$d 条</string>
+    <string name="footer_more">共 %1$d 条 · 已显示 %2$d 条，点这里或继续下滑加载更多</string>
+    <string name="footer_text">共 %1$d 条 · 文本 %2$d 字，长按可选中部分</string>
+    <string name="footer_none">当前没有可显示的文本</string>
+
+    <string name="btn_copy_text">复制文本</string>
+    <string name="btn_share">分享</string>
     <string name="btn_more">更多</string>
 
-    <string name="empty_hint">还没有记录到消息\n\n点上面的按钮开启通知使用权，之后微信来消息就会自动存下来</string>
-
-    <string name="footer_count">共 %1$d 条 · 列表显示最近 %2$d 条</string>
-    <string name="footer_count_all">共 %1$d 条 · 列表显示最近 %2$d 条 · 正在记录所有应用</string>
-
-    <string name="menu_export">导出到「下载」目录</string>
-    <string name="menu_share">分享文本</string>
-    <string name="menu_toggle_all">记录所有应用</string>
+    <string name="menu_export_filtered">导出当前筛选到「下载」目录</string>
+    <string name="menu_segment">分段复制（给 AI 用）</string>
+    <string name="menu_share_file">分享为文件</string>
+    <string name="menu_share_text">分享为文字</string>
+    <string name="menu_settings">设置</string>
     <string name="menu_clear">清空全部记录</string>
 
+    <!-- 分段复制 -->
+    <string name="seg_pick">选一段复制（每段约一万字）</string>
+    <string name="seg_item">第 %1$d/%2$d 段 · %3$s（%4$d 条 · %5$d 字）</string>
+    <string name="seg_head">【第 %1$d/%2$d 段】%3$s</string>
+    <string name="seg_copied">已复制第 %1$d 段（共 %2$d 段）</string>
+
+    <!-- 应用锁 -->
+    <string name="lock_title">解锁消息存档</string>
+    <string name="lock_sub">用指纹或锁屏密码验证</string>
+    <string name="lock_needed">请先在系统设置里录入指纹或设置锁屏密码</string>
+    <string name="lock_need_auth">未通过验证</string>
+    <string name="lock_on_toast">已开启应用锁</string>
+    <string name="lock_off_toast">已关闭应用锁</string>
+
+    <!-- 设置页 -->
+    <string name="title_settings">设置</string>
+    <string name="section_permission">权限与保活</string>
+    <string name="section_scope">记录范围</string>
+    <string name="section_ai">AI</string>
+    <string name="section_privacy">隐私</string>
+    <string name="section_data">数据</string>
+    <string name="section_about">关于</string>
+
+    <string name="set_listener">通知使用权</string>
+    <string name="set_listener_on">已开启</string>
+    <string name="set_listener_off">未开启，点这里去授权</string>
+
+    <string name="set_battery">忽略电池优化</string>
+    <string name="set_battery_on">已忽略，系统不会在后台冻结本应用</string>
+    <string name="set_battery_off">未设置，点这里申请（强烈建议开启）</string>
+
+    <string name="set_autostart">自启动 / 后台运行</string>
+    <string name="set_autostart_sub">小米、华为、OPPO、vivo 必须在这里放开，否则用两天就失效</string>
+
+    <string name="set_notif_channel">本应用的通知设置</string>
+    <string name="set_notif_channel_sub">检查通知是否被系统关闭或降级</string>
+
+    <string name="set_apps">监听的应用</string>
+    <string name="set_apps_sub">%1$s（共 %2$d 个）</string>
+
+    <string name="set_all_apps">记录所有应用</string>
+    <string name="set_all_apps_on">开启中，忽略上面的应用列表</string>
+    <string name="set_all_apps_off">关闭中，只记录上面勾选的应用</string>
+
+    <string name="set_lock">应用锁（指纹 / 锁屏密码）</string>
+    <string name="set_lock_on">已开启，每次打开都要验证</string>
+    <string name="set_lock_off">未开启，点这里开启</string>
+
+    <string name="set_secure">禁止截屏与录屏</string>
+    <string name="set_secure_on">已开启，系统截图和最近任务缩略图都会是黑屏</string>
+    <string name="set_secure_off">未开启，内容可能被截屏或录屏看到</string>
+    <string name="secure_on_toast">已开启，现在无法截屏</string>
+    <string name="secure_off_toast">已关闭，可以截屏了</string>
+
+    <string name="set_format">导出格式</string>
+    <string name="format_title">导出格式</string>
+    <string name="fmt_md">Markdown（适合给 AI 看）</string>
+    <string name="fmt_txt">纯文本</string>
+    <string name="fmt_csv">CSV（Excel 能直接开）</string>
+    <string name="fmt_json">JSON（给程序读）</string>
+
+    <string name="set_retention">保留时长</string>
+    <string name="retention_title">超过这个时间的记录自动删除</string>
+    <string name="retention_keep">永久保留（不自动删）</string>
+    <string name="retention_days">只保留最近 %1$d 天</string>
+
+    <string name="set_prune">立刻清理旧记录</string>
+    <string name="set_prune_sub">按时间手动删一批，不可恢复</string>
+    <string name="prune_title">清理多久之前的记录？</string>
+    <string name="prune_days_ago">%1$d 天前</string>
+    <string name="prune_done">已清理 %1$d 条</string>
+    <string name="prune_none">那个时间之前没有记录</string>
+
+    <string name="set_export">导出全部到「下载」目录</string>
+    <string name="set_export_sub">导出全部记录，不分应用和时间；按条件导出请回主页筛选</string>
+    <string name="set_share">分享全部为文字</string>
+    <string name="set_share_sub">发给微信、邮件，或直接粘给 AI</string>
+    <string name="set_share_file">分享全部为文件</string>
+    <string name="set_share_file_sub">发附件而不是一大段文字，微信里不会被截断</string>
+    <string name="set_clear">清空全部记录</string>
+    <string name="set_clear_sub">删除本地数据库里的所有消息，不可恢复</string>
+
+    <string name="about_body">版本 %1$s\n\n本应用没有申请「网络」权限。Android 在系统层面就禁止它建立任何网络连接，记录不可能离开这台设备。数据库存在应用私有目录，卸载时一并删除。应用锁用的是系统指纹/锁屏密码，本应用不接触也不保存任何密码。\n\n能做：把通知里显示的文字存到本地，按应用、按人、按时间筛选后一次复制成文本，或导出成 Markdown / CSV / JSON。\n做不到：读取微信聊天数据库（加密的，需要 root）。微信关掉「通知显示消息详情」时，只能拿到「你收到 N 条消息」。</string>
+
+    <!-- 应用选择 -->
+    <string name="title_apps">监听的应用</string>
+    <string name="apps_search">搜索应用名或包名</string>
+    <string name="apps_selected_n">已选择 %1$d 个应用</string>
+    <string name="apps_selected_none">一个都没选，现在不会记录任何通知</string>
+    <string name="apps_select_all">全选</string>
+    <string name="apps_clear_all">清空</string>
+    <string name="apps_empty">没有匹配的应用</string>
+    <string name="apps_hint">只列出有桌面图标的应用，系统应用也能选。勾选后，该应用的通知会被存到本地。</string>
+
+    <!-- 通用 -->
     <string name="copied_n">已复制 %1$d 条消息</string>
     <string name="copied_one">已复制这条消息</string>
+    <string name="copied_truncated">内容过长已截断，完整记录请用「更多 → 导出到下载目录」</string>
     <string name="nothing_to_copy">没有可复制的消息</string>
-    <string name="need_permission">请先开启通知使用权</string>
     <string name="export_ok">已保存到下载目录：%1$s</string>
     <string name="export_fail">保存失败</string>
     <string name="cleared">已清空</string>
     <string name="clear_confirm">删除本地保存的全部消息？此操作不可恢复。</string>
     <string name="confirm">确定</string>
     <string name="cancel">取消</string>
-    <string name="truncated_note">\n\n[内容过长已截断，请用「导出到下载目录」获取完整记录]</string>
+    <string name="truncated_note">\n\n[内容过长已截断，请改用「更多 → 导出到下载目录」获取完整记录]</string>
     <string name="share_title">分享消息记录</string>
-    <string name="clip_label">微信消息</string>
-    <string name="doc_header">微信消息记录，共 %1$d 条</string>
-    <string name="listener_missing">系统里找不到通知使用权设置页，请手动到「设置 → 通知 → 通知使用权」开启</string>
+    <string name="share_file_title">分享消息记录文件</string>
+    <string name="clip_label">消息记录</string>
+    <string name="doc_header">消息记录，共 %1$d 条</string>
+    <string name="doc_header_multi">消息记录，共 %1$d 条，来自 %2$d 个应用</string>
+    <string name="doc_range">时间范围：%1$s</string>
+    <string name="export_file_prefix">消息记录-</string>
+    <string name="listener_missing">系统里找不到通知使用权页面，请手动到「设置 → 通知 → 通知使用权」开启</string>
+    <string name="battery_done">已经忽略电池优化了</string>
+    <string name="battery_no_page">系统不允许直接申请，已打开电池优化列表，请手动找到本应用并设为「不限制」</string>
+    <string name="autostart_no_page">系统里没有独立的自启动页，已打开应用详情，请手动开启自启动和后台运行</string>
+    <string name="autostart_no_page">系统里没有独立的自启动页，已打开应用详情，请手动开启自启动和后台运行</string>
+
+    <!-- ========== AI 模型管理 ========== -->
+    <string name="title_model">AI 模型</string>
+    <string name="delete">删除</string>
+
+    <string name="set_model">AI 模型</string>
+    <string name="set_model_none">未安装 · 点此配置</string>
+    <string name="set_model_on">%1$s · 已开启</string>
+    <string name="set_model_off">%1$s · 已关闭</string>
+
+    <string name="model_section_status">当前</string>
+    <string name="model_status_on">已选用 %1$s（%2$s）。</string>
+    <string name="model_status_off">还没装模型。下面挑一个下载，或者从手机里导入已有的 .gguf 文件。</string>
+
+    <string name="model_section_builtin">可下载</string>
+    <string name="model_section_extra">本地文件</string>
+    <string name="model_section_import">从文件导入</string>
+    <string name="model_section_ai">待办识别</string>
+
+    <string name="model_name_rec">%1$s（推荐）</string>
+    <string name="model_local_note">你自己放进来的模型文件。</string>
+
+    <string name="model_state_downloading">下载中 %1$s / %2$s</string>
+    <string name="model_state_in_use">使用中</string>
+    <string name="model_state_ready">已下载，点右侧启用</string>
+    <string name="model_state_partial">上次中断，已下 %1$s</string>
+    <string name="model_state_absent">未下载</string>
+    <string name="model_state_bad">不是 GGUF 格式</string>
+
+    <string name="model_btn_cancel">取消</string>
+    <string name="model_btn_delete">删除</string>
+    <string name="model_btn_use">启用</string>
+    <string name="model_btn_resume">继续</string>
+    <string name="model_btn_download">下载</string>
+
+    <string name="model_import_hint">模型存放目录：\n%1$s\n\n用 USB 连电脑可以直接把 .gguf 拷进去。从下面导入的文件会复制一份到该目录，导完原文件就能删了。</string>
+    <string name="model_import_btn">选择模型文件</string>
+    <string name="model_import_no_picker">系统里没有文件选择器</string>
+    <string name="model_importing">正在导入…</string>
+    <string name="model_importing_progress">正在导入 %1$s</string>
+    <string name="model_import_done">已导入 %1$s</string>
+    <string name="model_import_fail">导入失败，可能不是 GGUF 模型</string>
+
+    <string name="model_download_confirm">要下载 %1$s。\n\n建议连 Wi-Fi，流量不小。</string>
+    <string name="model_download_started">已开始下载</string>
+    <string name="model_download_fail">下载失败，检查网络后重试（已下的部分会保留）</string>
+    <string name="model_download_done">%1$s 下载完成</string>
+    <string name="model_download_cancelled">已取消</string>
+    <string name="model_use_done">已启用 %1$s</string>
+    <string name="model_delete_confirm">删除 %1$s？文件会从手机里移除，下次要用得重新下载。</string>
+    <string name="model_deleted">已删除</string>
+    <string name="model_delete_fail">删不掉，文件可能正被占用</string>
+
+    <string name="model_ai_title">让模型参与待办识别</string>
+    <string name="model_ai_need_model">先装一个模型才能打开</string>
+    <string name="model_ai_on">已开启。规则拿不准的消息会再问一遍模型，慢一点但漏得少。</string>
+    <string name="model_ai_off">已关闭。只用本地规则识别，快。</string>
+
+    <!-- 待办候选页的 AI 补漏 -->
+    <string name="pick_ai">AI 补漏</string>
+    <string name="pick_ai_loading">正在加载模型…</string>
+    <string name="pick_ai_progress">AI 分析 %1$d / %2$d</string>
+    <string name="pick_ai_none">没有可补充的消息</string>
+    <string name="pick_ai_done">AI 补了 %1$d 条</string>
+    <string name="pick_ai_zero">AI 也没找到新的</string>
+    <string name="pick_ai_limit">消息太多，只分析前 %1$d 条</string>
 </resources>

@@ -2,16 +2,52 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      刻意不声明 android.permission.INTERNET。
-      没有这条权限，Android 在系统层面就会拒绝本应用建立任何网络连接，
-      数据不可能离开这台设备。这是可验证的，不是承诺。
-    -->
+      联网权限：只用于下载模型文件，没有别的用途。
 
+      2.x 版本这里刻意没有 INTERNET，那时功能全在本地，数据在系统层面就出不去。
+      加了「下载模型」之后这条绝对保证只能放宽，所以用两个办法把范围重新收紧：
+        1. 全工程只有 ModelDownloader 一个地方发起网络请求，目标地址写死在
+           ModelCatalog 里，都是公开的模型仓库；
+        2. 下面 application 上声明 usesCleartextTraffic=false，禁掉全部明文 HTTP，
+           请求只能走 TLS，也不存在被劫持到明文地址的余地。
+
+      所以现在能保证的是「除模型下载外没有任何出网代码路径」，
+      而不是「这台设备物理上没有出网能力」。要绝对离线，不下模型就行。
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 读取已安装应用列表，用来让用户勾选「监听哪些应用」 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- 申请「忽略电池优化」。没有它，系统会在后台冻结进程，通知监听就断了 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- 待办到点弹通知。Android 13 起是运行时权限，没授权通知会被静默丢弃 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 重启后闹钟会丢，需要开机广播来重排 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      SCHEDULE_EXACT_ALARM：精确闹钟。Android 12 起属于特殊权限，默认可能没给，
+      没给的话代码会降级成不精确闹钟（可能晚几十分钟），界面上有提示让用户去开。
+      刻意不用 USE_EXACT_ALARM —— 那个只允许闹钟/日历类应用申请，审核会被拒。
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!--
+      allowBackup=false 很关键：开着它，系统会把 wxmsglog.db 一起备份到
+      厂商云 / Google 云。那条通道走的是系统备份服务，不经过本应用的进程，
+      应用里的任何网络策略都管不到它——等于把「数据留在本机」这层承诺绕过去了。
+      关掉之后，云备份和换机传输都不会带走这个库（代价：卸载即清空）。
+    -->
     <application
-        android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/Theme.WxMsgLog">
 
         <activity
@@ -23,6 +59,49 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_settings"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".AppPickerActivity"
+            android:exported="false"
+            android:label="@string/title_apps"
+            android:parentActivityName=".SettingsActivity" />
+
+        <activity
+            android:name=".ModelActivity"
+            android:exported="false"
+            android:label="@string/title_model"
+            android:parentActivityName=".SettingsActivity" />
+
+        <activity
+            android:name=".TodoActivity"
+            android:exported="false"
+            android:label="@string/title_todo"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".TodoPickActivity"
+            android:exported="false"
+            android:label="@string/pick_title"
+            android:parentActivityName=".MainActivity" />
+
+        <!--
+          待办闹钟的接收端。exported=false 就够：闹钟是 PendingIntent 触发的，
+          属于本应用自己的投递，不需要别的应用能唤醒它。
+          BOOT_COMPLETED 也是系统发的显式广播，不受 exported 限制。
+        -->
+        <receiver
+            android:name=".TodoAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!--
           exported 必须是 true：绑定方是 system_server（不同 UID）。
@@ -38,6 +117,17 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- 分享文件用。只暴露 cache/exports，authority 用包名，不会和别的应用撞 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

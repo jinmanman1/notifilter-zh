@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 来源应用的小标签底色：黑底上要能看出是个「标签」，所以用比背景亮一档的中性灰。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/tag_bg" />
+    <corners android:radius="4dp" />
+</shape>

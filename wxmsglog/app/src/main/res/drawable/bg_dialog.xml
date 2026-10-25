@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色对话框底板：四边留出 inset，让对话框看起来是浮起来的一块，而不是铺满屏幕 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:bottom="24dp"
+        android:left="16dp"
+        android:right="16dp"
+        android:top="24dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/card_bg" />
+            <corners android:radius="16dp" />
+            <stroke
+                android:width="0.5dp"
+                android:color="@color/divider" />
+        </shape>
+    </item>
+</layer-list>
