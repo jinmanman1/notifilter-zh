@@ -215,7 +215,12 @@ class SettingsActivity : AppCompatActivity() {
         row(getString(R.string.set_share_file), getString(R.string.set_share_file_sub)) { shareFile() }
         row(getString(R.string.set_clear), getString(R.string.set_clear_sub)) { confirmClear() }
         row(getString(R.string.backup_export), getString(R.string.backup_export_sub)) { exportBackup() }
-        row(getString(R.string.backup_restore), getString(R.string.backup_restore_sub)) { pickBackup() }
+        row(getString(R.string.backup_restore), getString(R.string.backup_restore_sub)) {
+            // MIME 用 */* ：不同文件管理器给 .json 的类型五花八门
+            // （application/json、text/plain、octet-stream），限窄了会选不到。
+            // 真正的格式校验靠读进来之后判 JSON 结构。
+            pickBackup.launch(arrayOf("*/*"))
+        }
 
         section(getString(R.string.section_about))
         body(getString(R.string.about_body, versionName()))
