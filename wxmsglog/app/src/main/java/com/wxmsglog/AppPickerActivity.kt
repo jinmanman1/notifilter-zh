@@ -41,6 +41,8 @@ class AppPickerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 锁着的状态下从最近任务直接进来，直接退出去让主界面验证
+        if (Ui.closeIfLocked(this)) return
         Ui.applySecureFlag(this)
         setContentView(R.layout.activity_app_picker)
         Ui.edgeToEdge(this, findViewById(R.id.appBar), null)

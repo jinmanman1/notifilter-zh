@@ -14,6 +14,8 @@ object AppInfo {
     private val icons = HashMap<String, Drawable?>()
 
     fun label(context: Context, pkg: String): String {
+        // 分享进来的内容不对应任何真实应用，单独给个名字
+        if (pkg == MessageDb.SHARE_PKG) return context.getString(R.string.src_share)
         cache[pkg]?.let { return it }
         val name = try {
             val pm = context.applicationContext.packageManager

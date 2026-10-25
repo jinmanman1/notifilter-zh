@@ -4,9 +4,40 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /** 一次增量入库的结果。placeholders 是「只有空壳、没内容」的通知条数。 */
 class BatchResult(val added: Int, val placeholders: Int)
+
+/**
+ * 备份用的一行消息。
+ *
+ * 比 [Message] 多带 hash 和 tag：hash 是唯一索引，恢复时要靠它去重；
+ * tag 是分类结果，不带上就等于备份完之后分类全丢了。
+ */
+data class BackupMsg(
+    val ts: Long,
+    val sender: String,
+    val body: String,
+    val pkg: String,
+    val hash: String,
+    val tag: String,
+)
+
+/**
+ * 一个应用的监听情况。
+ *
+ * @param lastTs  最后一条消息的时间，0 表示从来没收到过
+ * @param total   总条数
+ * @param recent  最近这段时间（调用方给）的条数
+ */
+data class PkgStat(
+    val pkg: String,
+    val lastTs: Long,
+    val total: Int,
+    val recent: Int,
+)
 
 /**
  * 本地存储。用最原始的 SQLiteOpenHelper，不引 Room——
@@ -18,6 +49,8 @@ class BatchResult(val added: Int, val placeholders: Int)
  * v5：加 notestate 表，按「通知 key」记住上次已入库的内容指纹，
  *     用来把累积型通知里的增量挑出来，不再整段重存。
  * v6：加 todo 表，待办事项跟消息放同一个库，备份和清理都是一套。
+ * v7：加 report 表（日报/周报），以及 ai_scan 表记录 AI 扫到哪了。
+ * v8：消息加 tag 列（分类打标），加 vec 表（语义搜索的向量）。
  */
 class MessageDb private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, NAME, null, VERSION) {
@@ -30,14 +63,36 @@ class MessageDb private constructor(context: Context) :
                 "sender TEXT NOT NULL," +
                 "body TEXT NOT NULL," +
                 "pkg TEXT NOT NULL DEFAULT ''," +
+                // 分类打标的结果："" / code / delivery / bill / ad / work / life
+                "tag TEXT NOT NULL DEFAULT ''," +
                 "hash TEXT NOT NULL UNIQUE)"
         )
         db.execSQL("CREATE INDEX idx_${TABLE}_ts ON $TABLE(ts)")
         db.execSQL("CREATE INDEX idx_${TABLE}_pkg ON $TABLE(pkg)")
         db.execSQL("CREATE INDEX idx_${TABLE}_sender ON $TABLE(sender)")
+        db.execSQL("CREATE INDEX idx_${TABLE}_tag ON $TABLE(tag)")
         db.execSQL(createStateSql())
         db.execSQL(createTodoSql())
+        db.execSQL(createReportSql())
+        db.execSQL(createVecSql())
     }
+
+    /** 语义搜索的向量。单独一张表，主表就不用扛几百兆的 blob。 */
+    private fun createVecSql() =
+        "CREATE TABLE IF NOT EXISTS $VEC_TABLE (" +
+            "msg_id INTEGER PRIMARY KEY," +
+            "v BLOB NOT NULL)"
+
+    private fun createReportSql() =
+        "CREATE TABLE IF NOT EXISTS $REPORT_TABLE (" +
+            "_id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            // "day" 或 "week"
+            "kind TEXT NOT NULL," +
+            "from_ts INTEGER NOT NULL," +
+            "to_ts INTEGER NOT NULL," +
+            "body TEXT NOT NULL," +
+            "created INTEGER NOT NULL," +
+            "UNIQUE(kind, from_ts))"
 
     private fun createStateSql() =
         "CREATE TABLE IF NOT EXISTS $STATE_TABLE (" +
@@ -75,6 +130,15 @@ class MessageDb private constructor(context: Context) :
         }
         if (oldVersion < 6) {
             runCatching { db.execSQL(createTodoSql()) }
+        }
+        if (oldVersion < 7) {
+            runCatching { db.execSQL(createReportSql()) }
+        }
+        if (oldVersion < 8) {
+            // 老消息的 tag 一律为空，等用户点「分类」再补
+            runCatching { db.execSQL("ALTER TABLE $TABLE ADD COLUMN tag TEXT NOT NULL DEFAULT ''") }
+            runCatching { db.execSQL("CREATE INDEX idx_${TABLE}_tag ON $TABLE(tag)") }
+            runCatching { db.execSQL(createVecSql()) }
         }
     }
 
@@ -141,6 +205,53 @@ class MessageDb private constructor(context: Context) :
         return out
     }
 
+    /**
+     * 指定时间范围内的待办，历史页用。
+     *
+     * 按「创建时间」落在区间里算，不是按截止时间——用户想找「上周三记了什么」时，
+     * 脑子里是那天写下的东西，不是截止日期正好在那天。
+     */
+    fun todosBetween(from: Long, to: Long): List<Todo> {
+        val sql = "SELECT * FROM $TODO_TABLE WHERE created >= ? AND created < ?" +
+            " ORDER BY done ASC, created DESC"
+        val out = ArrayList<Todo>()
+        readableDatabase.rawQuery(sql, arrayOf(from.toString(), to.toString())).use { c ->
+            val iId = c.getColumnIndexOrThrow("_id")
+            val iText = c.getColumnIndexOrThrow("text")
+            val iDue = c.getColumnIndexOrThrow("due")
+            val iDone = c.getColumnIndexOrThrow("done")
+            val iSrc = c.getColumnIndexOrThrow("src")
+            val iCreated = c.getColumnIndexOrThrow("created")
+            while (c.moveToNext()) {
+                out.add(
+                    Todo(
+                        c.getLong(iId),
+                        c.getString(iText) ?: "",
+                        c.getLong(iDue),
+                        c.getInt(iDone) != 0,
+                        c.getLong(iSrc),
+                        c.getLong(iCreated),
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    /**
+     * 已经关联了待办的消息 id。
+     * AI 聚合时拿它判重：这条消息上次已经生成过待办了，别再弹一次。
+     */
+    fun todoSourceIds(): Set<Long> {
+        val out = HashSet<Long>()
+        readableDatabase.rawQuery(
+            "SELECT DISTINCT src FROM $TODO_TABLE WHERE src > 0", null
+        ).use { c ->
+            while (c.moveToNext()) out.add(c.getLong(0))
+        }
+        return out
+    }
+
     /** 还没完成、且设了时间的待办。用来在开机或重装闹钟后重新排一遍。 */
     fun pendingTodos(): List<Todo> = todos().filter { !it.done && it.due > 0L }
 
@@ -151,6 +262,393 @@ class MessageDb private constructor(context: Context) :
         ).use { c ->
             return if (c.moveToFirst()) c.getInt(0) else 0
         }
+    }
+
+    // ---------- 日报 / 周报 ----------
+
+    /** 覆盖写。同一天重跑就更新内容，不会堆出一堆重复的。 */
+    fun saveReport(kind: String, from: Long, to: Long, body: String) {
+        val cv = ContentValues().apply {
+            put("kind", kind)
+            put("from_ts", from)
+            put("to_ts", to)
+            put("body", body)
+            put("created", System.currentTimeMillis())
+        }
+        writableDatabase.insertWithOnConflict(
+            REPORT_TABLE, null, cv, SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    /** 新的在前。 */
+    fun reports(limit: Int = 60): List<Report> {
+        val out = ArrayList<Report>()
+        readableDatabase.rawQuery(
+            "SELECT * FROM $REPORT_TABLE ORDER BY from_ts DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use { c ->
+            while (c.moveToNext()) {
+                out.add(
+                    Report(
+                        c.getLong(c.getColumnIndexOrThrow("_id")),
+                        c.getString(c.getColumnIndexOrThrow("kind")) ?: "day",
+                        c.getLong(c.getColumnIndexOrThrow("from_ts")),
+                        c.getLong(c.getColumnIndexOrThrow("to_ts")),
+                        c.getString(c.getColumnIndexOrThrow("body")) ?: "",
+                        c.getLong(c.getColumnIndexOrThrow("created")),
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    fun deleteReport(id: Long) {
+        writableDatabase.delete(REPORT_TABLE, "_id = ?", arrayOf(id.toString()))
+    }
+
+    // ---------- 语义搜索的向量 ----------
+
+    /**
+     * 还没算过向量的消息，新的优先。
+     *
+     * 用 LEFT JOIN 判空而不是 NOT IN：几万条消息时 NOT IN 要全表扫，
+     * LEFT JOIN 配上 msg_id 主键索引快得多。
+     */
+    fun unembeddedMessages(limit: Int): List<Message> {
+        val sql = "SELECT m.* FROM $TABLE m LEFT JOIN $VEC_TABLE v ON m._id = v.msg_id" +
+            " WHERE v.msg_id IS NULL AND length(m.body) > 0" +
+            " ORDER BY m.ts DESC LIMIT ?"
+        return readMessages(sql, arrayOf(limit.toString()))
+    }
+
+    fun saveVec(msgId: Long, v: FloatArray) {
+        val cv = ContentValues().apply {
+            put("msg_id", msgId)
+            put("v", floatsToBlob(v))
+        }
+        writableDatabase.insertWithOnConflict(
+            VEC_TABLE, null, cv, SQLiteDatabase.CONFLICT_REPLACE
+        )
+    }
+
+    fun vecCount(): Int = countOf("SELECT COUNT(*) FROM $VEC_TABLE")
+
+    /** 全部向量。一次读进内存算相似度，比每条查一次快一个数量级。 */
+    fun allVecs(): List<Pair<Long, FloatArray>> {
+        val out = ArrayList<Pair<Long, FloatArray>>()
+        readableDatabase.rawQuery("SELECT msg_id, v FROM $VEC_TABLE", null).use { c ->
+            while (c.moveToNext()) {
+                out.add(c.getLong(0) to blobToFloats(c.getBlob(1)))
+            }
+        }
+        return out
+    }
+
+    fun clearVecs() {
+        writableDatabase.delete(VEC_TABLE, null, null)
+    }
+
+    // ---------- 分类标签 ----------
+
+    fun setTag(msgId: Long, tag: String) {
+        writableDatabase.update(
+            TABLE,
+            ContentValues().apply { put("tag", tag) },
+            "_id = ?",
+            arrayOf(msgId.toString()),
+        )
+    }
+
+    /** 批量写标签，一次事务，几千条也不会卡。 */
+    fun setTags(items: List<Pair<Long, String>>) {
+        if (items.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for ((id, tag) in items) {
+                db.update(
+                    TABLE,
+                    ContentValues().apply { put("tag", tag) },
+                    "_id = ?",
+                    arrayOf(id.toString()),
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun messagesByTag(tag: String, limit: Int = 500): List<Message> {
+        val sql = "SELECT * FROM $TABLE WHERE tag = ? ORDER BY ts DESC LIMIT ?"
+        return readMessages(sql, arrayOf(tag, limit.toString()))
+    }
+
+    /** 标签 -> 条数。没分类的用空键 ""。 */
+    fun tagCounts(): Map<String, Int> {
+        val out = LinkedHashMap<String, Int>()
+        readableDatabase.rawQuery(
+            "SELECT tag, COUNT(*) FROM $TABLE GROUP BY tag ORDER BY COUNT(*) DESC", null
+        ).use { c ->
+            while (c.moveToNext()) out[c.getString(0) ?: ""] = c.getInt(1)
+        }
+        return out
+    }
+
+    fun untaggedCount(): Int = countOf("SELECT COUNT(*) FROM $TABLE WHERE tag = ''")
+
+    /**
+     * 待分类的消息。
+     *
+     * 只取 6 个字以上的：太短的消息（「好的」「收到」）分不出什么，硬要分
+     * 反而会把它们塞进「其他」，而且它们分类后 tag 仍然是空，下次还会被
+     * 捞出来——变成一个永远跑不完的循环。这里直接排除。
+     */
+    fun untaggedMessages(limit: Int): List<Message> {
+        val sql = "SELECT * FROM $TABLE WHERE tag = '' AND length(body) >= 6" +
+            " ORDER BY ts DESC LIMIT ?"
+        return readMessages(sql, arrayOf(limit.toString()))
+    }
+
+    // ---------- 内部小工具 ----------
+
+    private fun countOf(sql: String): Int {
+        readableDatabase.rawQuery(sql, null).use { c ->
+            return if (c.moveToFirst()) c.getInt(0) else 0
+        }
+    }
+
+    private fun readMessages(sql: String, args: Array<String>): List<Message> {
+        val out = ArrayList<Message>()
+        readableDatabase.rawQuery(sql, args).use { c ->
+            val iId = c.getColumnIndexOrThrow("_id")
+            val iTs = c.getColumnIndexOrThrow("ts")
+            val iSender = c.getColumnIndexOrThrow("sender")
+            val iBody = c.getColumnIndexOrThrow("body")
+            val iPkg = c.getColumnIndexOrThrow("pkg")
+            while (c.moveToNext()) {
+                out.add(
+                    Message(
+                        c.getLong(iId),
+                        c.getLong(iTs),
+                        c.getString(iSender) ?: "",
+                        c.getString(iBody) ?: "",
+                        c.getString(iPkg) ?: "",
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    private fun floatsToBlob(v: FloatArray): ByteArray {
+        val bb = ByteBuffer.allocate(v.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+        for (f in v) bb.putFloat(f)
+        return bb.array()
+    }
+
+    private fun blobToFloats(b: ByteArray?): FloatArray {
+        if (b == null || b.size < 4) return FloatArray(0)
+        val bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)
+        val out = FloatArray(b.size / 4)
+        for (i in out.indices) out[i] = bb.float
+        return out
+    }
+
+    // ---------- 备份 / 恢复 ----------
+
+    /**
+     * 导出用：全部消息，带上 hash 和 tag。
+     * hash 是唯一索引，恢复时靠它判重；tag 是分类结果，不带上等于备份完分类全丢。
+     */
+    fun backupMessages(): List<BackupMsg> {
+        val out = ArrayList<BackupMsg>()
+        readableDatabase.rawQuery(
+            "SELECT ts, sender, body, pkg, hash, tag FROM $TABLE ORDER BY ts ASC", null
+        ).use { c ->
+            while (c.moveToNext()) {
+                out.add(
+                    BackupMsg(
+                        c.getLong(0),
+                        c.getString(1) ?: "",
+                        c.getString(2) ?: "",
+                        c.getString(3) ?: "",
+                        c.getString(4) ?: "",
+                        c.getString(5) ?: "",
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    /**
+     * 存一条从系统分享进来的文字。
+     *
+     * 用专门的包名标记来源，界面上显示成「手动分享」，跟通知抓来的分开。
+     * hash 还是走那套规则，所以同一段文字分享两次只会存一条。
+     *
+     * @return 新插入的 id；已经存在时返回 -1。
+     */
+    fun insertShared(text: String, now: Long = System.currentTimeMillis()): Long {
+        val body = text.trim()
+        if (body.isEmpty()) return -1
+        val cv = ContentValues().apply {
+            put("ts", now)
+            put("sender", "")
+            put("body", body)
+            put("pkg", SHARE_PKG)
+            put("hash", WxParse.fingerprint(SHARE_PKG, "", body))
+            put("tag", TagRules.classify(body))
+        }
+        return writableDatabase.insertWithOnConflict(
+            TABLE, null, cv, SQLiteDatabase.CONFLICT_IGNORE
+        )
+    }
+
+    /** 恢复消息：hash 已存在的自动跳过，可以重复导入同一份备份。 */    fun insertBackupMessages(items: List<BackupMsg>): Int {
+        if (items.isEmpty()) return 0
+        val db = writableDatabase
+        var added = 0
+        db.beginTransaction()
+        try {
+            for (m in items) {
+                val cv = ContentValues().apply {
+                    put("ts", m.ts)
+                    put("sender", m.sender)
+                    put("body", m.body)
+                    put("pkg", m.pkg)
+                    put("hash", m.hash)
+                    put("tag", m.tag)
+                }
+                if (db.insertWithOnConflict(TABLE, null, cv, SQLiteDatabase.CONFLICT_IGNORE) > 0) {
+                    added++
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return added
+    }
+
+    /** 恢复待办：保留完成状态和创建时间，恢复之后历史页也能看到。 */
+    fun insertBackupTodos(items: List<Todo>): Int {
+        if (items.isEmpty()) return 0
+        val db = writableDatabase
+        var added = 0
+        db.beginTransaction()
+        try {
+            for (t in items) {
+                val cv = ContentValues().apply {
+                    put("text", t.text)
+                    put("due", t.due)
+                    put("done", if (t.done) 1 else 0)
+                    put("src", t.src)
+                    put("created", t.created)
+                }
+                if (db.insert(TODO_TABLE, null, cv) > 0) added++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return added
+    }
+
+    /** 恢复报告：同一天同一类型的用 REPLACE，不会堆重复。 */
+    fun insertBackupReports(items: List<Report>): Int {
+        if (items.isEmpty()) return 0
+        val db = writableDatabase
+        var added = 0
+        db.beginTransaction()
+        try {
+            for (r in items) {
+                val cv = ContentValues().apply {
+                    put("kind", r.kind)
+                    put("from_ts", r.from)
+                    put("to_ts", r.to)
+                    put("body", r.body)
+                    put("created", r.created)
+                }
+                if (db.insertWithOnConflict(
+                        REPORT_TABLE, null, cv, SQLiteDatabase.CONFLICT_REPLACE
+                    ) > 0
+                ) added++
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return added
+    }
+
+    /** 导出报告用，条数上限给够。 */
+    fun reportsForBackup(): List<Report> = reports(100_000)
+
+    /**
+     * 每个应用的监听情况，按「最后一条消息」倒序。
+     *
+     * 「静默失效」是这类应用最坑的失败模式：授权还在、界面还显示正常，
+     * 但其实一条也没收到。所以这里把「最后一条是什么时候」摆出来，
+     * 用户一眼就能看出哪个应用断了。
+     */
+    fun pkgStats(sinceTs: Long): List<PkgStat> {
+        val out = ArrayList<PkgStat>()
+        val sql = "SELECT pkg, MAX(ts), COUNT(*)," +
+            " SUM(CASE WHEN ts >= ? THEN 1 ELSE 0 END)" +
+            " FROM $TABLE GROUP BY pkg ORDER BY MAX(ts) DESC"
+        readableDatabase.rawQuery(sql, arrayOf(sinceTs.toString())).use { c ->
+            while (c.moveToNext()) {
+                out.add(
+                    PkgStat(
+                        pkg = c.getString(0) ?: "",
+                        lastTs = c.getLong(1),
+                        total = c.getInt(2),
+                        recent = c.getInt(3),
+                    )
+                )
+            }
+        }
+        return out
+    }
+
+    /** 整库最后一次收到消息是什么时候。0 表示库是空的。 */
+    fun lastMessageTs(): Long {
+        readableDatabase.rawQuery("SELECT MAX(ts) FROM $TABLE", null).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0L
+        }
+    }
+
+    /**
+     * 某条消息的前后文。
+     *
+     * 排序用 (ts, _id) 两段：同一秒可能有多条消息，只按 ts 排的话
+     * 前后关系会乱，取出来的「上下文」顺序就是错的。
+     */
+    fun messagesAround(m: Message, before: Int = 20, after: Int = 20): List<Message> {
+        val out = ArrayList<Message>()
+        val args = arrayOf(m.ts.toString(), m.ts.toString(), m.id.toString())
+
+        // 比它早的，倒着取 N 条，再翻回来
+        val earlier = readMessages(
+            "SELECT * FROM $TABLE WHERE ts < ? OR (ts = ? AND _id < ?)" +
+                " ORDER BY ts DESC, _id DESC LIMIT ?",
+            args + arrayOf(before.toString()),
+        )
+        out.addAll(earlier.asReversed())
+
+        out.add(m)
+
+        // 比它晚的，正着取 N 条
+        val later = readMessages(
+            "SELECT * FROM $TABLE WHERE ts > ? OR (ts = ? AND _id > ?)" +
+                " ORDER BY ts ASC, _id ASC LIMIT ?",
+            args + arrayOf(after.toString()),
+        )
+        out.addAll(later)
+        return out
     }
 
     /**
@@ -488,10 +986,15 @@ class MessageDb private constructor(context: Context) :
 
     companion object {
         private const val NAME = "wxmsglog.db"
-        private const val VERSION = 6
+        private const val VERSION = 8
         private const val TABLE = "msg"
         private const val STATE_TABLE = "notestate"
         private const val TODO_TABLE = "todo"
+        private const val REPORT_TABLE = "report"
+        private const val VEC_TABLE = "vec"
+
+        /** 分享进来的内容用这个包名做标记，不指向任何真实应用。 */
+        const val SHARE_PKG = "com.wxmsglog.share"
 
         /** 每个通知 key 最多记这么多条指纹，够覆盖通知里能显示的那一段。 */
         private const val STATE_LIMIT = 60

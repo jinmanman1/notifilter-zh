@@ -118,6 +118,10 @@ class MainActivity : AppCompatActivity() {
         Ui.edgeToEdge(this, findViewById(R.id.appBar), findViewById(R.id.bottomBox))
         db = MessageDb.get(this)
 
+        // 定时聚合和日报闹钟都排在 AlarmManager 里，重启或重装后会丢。
+        // 每次启动重排一次，成本可以忽略，但能保证「装完一直没进过设置页」的人也有闹钟。
+        runCatching { AiSchedule.rescheduleAll(this) }
+
         bindViews()
         adapter = GroupedAdapter(
             onMessageClick = { m -> onMessageTapped(m) },
@@ -146,6 +150,7 @@ class MainActivity : AppCompatActivity() {
 
         Bus.set { onDataChanged() }
         prepareLock()
+        handleShare(intent)
     }
 
     private fun bindViews() {
@@ -226,8 +231,13 @@ class MainActivity : AppCompatActivity() {
      */
     private var needLock = false
 
+    /** 退到后台一段时间后释放模型内存。回到前台就取消。 */
+    private val idleSweep = Runnable { Llm.sweepIdle() }
+
     private fun prepareLock() {
-        if (!Prefs.lockEnabled(this) || Lock.unlocked) return
+        if (!Prefs.lockEnabled(this)) return
+        if (!Lock.shouldRelock(this)) return
+        Lock.unlocked = false
         needLock = true
         findViewById<View>(R.id.root).visibility = View.INVISIBLE
     }
@@ -235,15 +245,75 @@ class MainActivity : AppCompatActivity() {
     private fun runLock() {
         val started = Lock.prompt(
             this,
-            onSuccess = { findViewById<View>(R.id.root).visibility = View.VISIBLE },
+            onSuccess = {
+                findViewById<View>(R.id.root).visibility = View.VISIBLE
+                Lock.markUnlocked()
+            },
             onCancel = { finish() },
         )
         // 设备没有可用的验证方式：放行，否则用户永远进不来
         if (!started) findViewById<View>(R.id.root).visibility = View.VISIBLE
     }
 
+    override fun onStart() {
+        super.onStart()
+        // 回到前台，取消「空闲卸载」的计时
+        ui.removeCallbacks(idleSweep)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (Prefs.lockEnabled(this)) Lock.markLeft()
+        // 退到后台 5 分钟后释放模型。不这样做的话，用过一次 AI，
+        // 那 1.5G 会一直占着，直到进程被杀
+        ui.removeCallbacks(idleSweep)
+        ui.postDelayed(idleSweep, Llm.IDLE_UNLOAD_MS)
+    }
+
+    /**
+     * 从系统分享面板进来的文字，直接存一条。
+     *
+     * 这条路径补的是通知监听的盲区：关掉通知的群、被折叠的消息、
+     * 公众号里的段落、别处复制来的一段话，都能从这里进库。
+     * 存进来的来源标记是「手动分享」，跟通知抓来的分得开。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShare(intent)
+    }
+
+    private fun handleShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+        if (text.isEmpty()) return
+        // 处理过就把 action 抹掉，免得屏幕旋转重建时又存一遍
+        intent.action = null
+
+        io.execute {
+            val id = runCatching { db.insertShared(text) }.getOrDefault(-1L)
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                if (id > 0L) {
+                    toast(getString(R.string.share_saved))
+                    refresh()
+                } else {
+                    toast(getString(R.string.share_duplicate))
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        // 从后台回来：离开超过阈值就重新锁上。
+        // 这里不能只看 needLock——它只在 onCreate 时置位，进程活着就一直为 false，
+        // 等于解锁一次之后永远不再验证。
+        if (Prefs.lockEnabled(this) && !needLock && Lock.shouldRelock(this)) {
+            Lock.unlocked = false
+            needLock = true
+            findViewById<View>(R.id.root).visibility = View.INVISIBLE
+        }
         if (needLock) {
             needLock = false
             runLock()
@@ -552,9 +622,29 @@ class MainActivity : AppCompatActivity() {
         val out = ArrayList<Row>(list.size + map.size)
         for ((pkg, msgs) in map) {
             out.add(Row.Header(AppInfo.label(this, pkg), msgs.size, pkg, Row.Header.Kind.APP, pkg))
-            for (m in msgs) out.add(Row.Msg(m))
+            appendFolded(out, msgs)
         }
         return out
+    }
+
+    /**
+     * 把连续重复的消息折成一条。
+     *
+     * 群里刷屏「收到」的时候，二十条一模一样的东西占满整屏，翻起来很难受。
+     * 折成一条带 ×20，既不挡视线，条数也没丢——点开上下文还能看到全部。
+     */
+    private fun appendFolded(out: MutableList<Row>, msgs: List<Message>) {
+        for (m in msgs) {
+            val last = out.lastOrNull()
+            if (last is Row.Msg &&
+                last.message.sender == m.sender &&
+                last.message.body == m.body
+            ) {
+                out[out.lastIndex] = Row.Msg(last.message, last.repeat + 1)
+            } else {
+                out.add(Row.Msg(m, 1))
+            }
+        }
     }
 
     /** 按发信人分组。标题就是人名/群名。 */
@@ -570,7 +660,7 @@ class MainActivity : AppCompatActivity() {
             out.add(
                 Row.Header(sender, msgs.size, msgs.first().pkg, Row.Header.Kind.SENDER, sender)
             )
-            for (m in msgs) out.add(Row.Msg(m))
+            appendFolded(out, msgs)
         }
         return out
     }
@@ -595,13 +685,104 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- 多选 ----------
 
+    /**
+     * 点一条消息：看上下文，而不是直接复制。
+     *
+     * 找回信息的时候，光看到那一句往往不够——「他说的那个方案是哪个方案」，
+     * 得看前后聊了什么。所以点开是一个能滚动的对话片段，当前这条高亮，
+     * 底部保留「复制这条」，原来一步能做的事没有丢。
+     */
     private fun onMessageTapped(m: Message) {
         if (selecting) {
             toggleSelected(m.id)
-        } else {
-            Exporter.copy(this, m.sender + ": " + m.body)
-            toast(getString(R.string.copied_one))
+            return
         }
+        showContext(m)
+    }
+
+    private fun showContext(m: Message) {
+        io.execute {
+            val around = runCatching { db.messagesAround(m) }.getOrDefault(listOf(m))
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                val tv = TextView(this).apply {
+                    textSize = 13f
+                    setLineSpacing(dp(3).toFloat(), 1.35f)
+                    setPadding(dp(18), dp(14), dp(18), dp(6))
+                    setTextIsSelectable(true)
+                    text = buildContextText(around, m.id)
+                }
+                val sv = ScrollView(this).apply { addView(tv) }
+
+                val dlg = androidx.appcompat.app.AlertDialog
+                    .Builder(this, R.style.Theme_WxMsgLog_Dialog)
+                    .setTitle(
+                        TimeFmt.friendly(m.ts) + "  " +
+                            m.sender.ifBlank { AppInfo.label(this, m.pkg) }
+                    )
+                    .setView(sv)
+                    .setPositiveButton(R.string.ctx_copy) { _, _ ->
+                        Exporter.copy(this, m.sender + ": " + m.body)
+                        toast(getString(R.string.copied_one))
+                    }
+                    .setNegativeButton(R.string.confirm, null)
+                    .create()
+                dlg.show()
+
+                // 让当前这条滚到中间，别让人自己翻
+                sv.post {
+                    val layout = tv.layout ?: return@post
+                    val line = layout.getLineForOffset(currentOffset(tv.text.toString()))
+                    sv.scrollTo(0, (layout.getLineTop(line) - sv.height / 3).coerceAtLeast(0))
+                }
+            }
+        }
+    }
+
+    /** 把上下文拼成一段文本，当前这条用「▶」标出来。 */
+    private fun buildContextText(list: List<Message>, currentId: Long): CharSequence {
+        val sb = StringBuilder()
+        // 逐条记下起止位置，别手算长度——「▶ 」和「  」宽度不同，
+        // 手算很容易错位，最后高亮标到别人身上
+        val spans = ArrayList<IntArray>()
+
+        for (x in list) {
+            val start = sb.length
+            sb.append(if (x.id == currentId) "▶ " else "  ")
+                .append(TimeFmt.friendly(x.ts))
+                .append(' ')
+            if (x.sender.isNotBlank()) sb.append(x.sender).append(": ")
+            sb.append(x.body).append('\n')
+            spans.add(intArrayOf(start, sb.length - 1, if (x.id == currentId) 1 else 0))
+        }
+
+        val full = sb.toString()
+        val sp = android.text.SpannableString(full)
+        for (r in spans) {
+            val end = r[1].coerceIn(0, full.length)
+            val start = r[0].coerceIn(0, end)
+            sp.setSpan(
+                android.text.style.ForegroundColorSpan(
+                    getColor(if (r[2] == 1) R.color.primary else R.color.text_secondary)
+                ),
+                start, end,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            if (r[2] == 1) {
+                sp.setSpan(
+                    android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                    start, end,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        }
+        return sp
+    }
+
+    /** 当前这条在拼出来的长文本里从哪开始。 */
+    private fun currentOffset(full: String): Int {
+        val i = full.indexOf("▶ ")
+        return if (i >= 0) i else 0
     }
 
     private fun startSelection(m: Message) {
@@ -1088,14 +1269,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun showMenu(anchor: View) {
         val popup = PopupMenu(this, anchor)
-        popup.menu.add(0, MENU_EXPORT, 0, getString(R.string.menu_export_filtered))
-        popup.menu.add(0, MENU_SEGMENT, 1, getString(R.string.menu_segment))
-        popup.menu.add(0, MENU_SHARE_FILE, 2, getString(R.string.menu_share_file))
-        popup.menu.add(0, MENU_SHARE_TEXT, 3, getString(R.string.menu_share_text))
-        popup.menu.add(0, MENU_SETTINGS, 4, getString(R.string.menu_settings))
-        popup.menu.add(0, MENU_CLEAR, 5, getString(R.string.menu_clear))
+        // 语义搜索和分类放在最上面：它们回答的是「我要找东西」，
+        // 比导出、清空这些维护动作更常用
+        popup.menu.add(0, MENU_VEC, 0, getString(R.string.vec_title))
+        popup.menu.add(0, MENU_TAG, 1, getString(R.string.tag_title))
+        popup.menu.add(0, MENU_EXPORT, 2, getString(R.string.menu_export_filtered))
+        popup.menu.add(0, MENU_SEGMENT, 3, getString(R.string.menu_segment))
+        popup.menu.add(0, MENU_SHARE_FILE, 4, getString(R.string.menu_share_file))
+        popup.menu.add(0, MENU_SHARE_TEXT, 5, getString(R.string.menu_share_text))
+        popup.menu.add(0, MENU_SETTINGS, 6, getString(R.string.menu_settings))
+        popup.menu.add(0, MENU_CLEAR, 7, getString(R.string.menu_clear))
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
+                MENU_VEC -> startActivity(Intent(this, SemanticSearchActivity::class.java))
+                MENU_TAG -> startActivity(Intent(this, TagActivity::class.java))
                 MENU_EXPORT -> exportCurrent()
                 MENU_SEGMENT -> pickSegment()
                 MENU_SHARE_FILE -> shareCurrentFile()
@@ -1108,6 +1295,8 @@ class MainActivity : AppCompatActivity() {
         }
         popup.show()
     }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun toast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -1154,6 +1343,8 @@ class MainActivity : AppCompatActivity() {
         private val TYPE_BOLD = android.graphics.Typeface.BOLD
         private val TYPE_NORMAL = android.graphics.Typeface.NORMAL
 
+        private const val MENU_VEC = 7
+        private const val MENU_TAG = 8
         private const val MENU_EXPORT = 1
         private const val MENU_SEGMENT = 2
         private const val MENU_SHARE_FILE = 3

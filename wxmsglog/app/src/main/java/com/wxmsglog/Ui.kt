@@ -39,14 +39,28 @@ object Ui {
         window.navigationBarColor = Color.TRANSPARENT
         window.isNavigationBarContrastEnforced = false
 
+        // 布局里可能本来就留了内边距（比如 RecyclerView 的 paddingBottom=24dp，
+        // 让最后一条不贴着屏幕边）。insets 回调会反复触发，如果每次都直接覆盖成
+        // bars.bottom，原本那点留白就丢了——表现就是最后一条被导航栏压住。
+        // 所以先记下原始值，每次都用「原始值 + insets」重新算。
+        val appBarPadTop = appBar.paddingTop
+        val bottomPadTop = bottom?.paddingTop ?: 0
+        val bottomPadBottom = bottom?.paddingBottom ?: 0
+
         val content = activity.findViewById<View>(android.R.id.content)
         ViewCompat.setOnApplyWindowInsetsListener(content) { _, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            // 每次都赋同样的值，不用累加，所以不会随回调次数膨胀
-            appBar.setPadding(bars.left, bars.top, bars.right, 0)
-            if (bottom != null) bottom.setPadding(bars.left, 0, bars.right, bars.bottom)
+            appBar.setPadding(bars.left, appBarPadTop + bars.top, bars.right, appBar.paddingBottom)
+            if (bottom != null) {
+                bottom.setPadding(
+                    bars.left,
+                    bottomPadTop,
+                    bars.right,
+                    bottomPadBottom + bars.bottom,
+                )
+            }
             insets
         }
         appBar.post { ViewCompat.requestApplyInsets(content) }
@@ -64,6 +78,27 @@ object Ui {
         } else {
             activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
+    }
+
+    /**
+     * 二级页面的锁检查。
+     *
+     * 主界面会把内容藏起来再弹验证，二级页面不重复这套——直接 finish() 退回主界面，
+     * 由它统一验证。这样「离开太久」的判断只有一处，不会每个页面各写一套。
+     *
+     * @return true 表示已经退出，调用方应当立即 return。
+     */
+    fun closeIfLocked(activity: Activity): Boolean {
+        if (!Prefs.lockEnabled(activity)) return false
+        if (!Lock.shouldRelock(activity)) return false
+        Lock.unlocked = false
+        activity.finish()
+        return true
+    }
+
+    /** 记录「这个页面退到后台了」，判断重新验证时要用。 */
+    fun markLeftIfLocked(activity: Activity) {
+        if (Prefs.lockEnabled(activity)) Lock.markLeft()
     }
 
     /** 读主题里的正文颜色。用代码给 TextView 换色时必须拿这个，否则会跟主题脱节。 */

@@ -35,6 +35,12 @@ class SettingsActivity : AppCompatActivity() {
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
     private val ui = Handler(Looper.getMainLooper())
 
+    /** 选备份文件。恢复是覆盖式导入，所以选完还要再确认一次。 */
+    private val pickBackup =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) confirmRestore(uri)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.applySecureFlag(this)
@@ -48,6 +54,8 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 离开太久就退回主界面，由它统一弹验证
+        if (Ui.closeIfLocked(this)) return
         val y = if (::scroll.isInitialized) scroll.scrollY else 0
         render()
         if (y > 0) scroll.post { scroll.scrollTo(0, y) }
@@ -68,6 +76,11 @@ class SettingsActivity : AppCompatActivity() {
         val all = Prefs.recordAll(this)
 
         section(getString(R.string.section_permission))
+        // 放在最上面：用户来设置页，一半是因为「好像不记录了」
+        row(
+            getString(R.string.health_title),
+            if (granted) getString(R.string.health_last, lastAgo()) else getString(R.string.health_off_listener),
+        ) { startActivity(Intent(this, HealthActivity::class.java)) }
         row(
             getString(R.string.set_listener),
             getString(if (granted) R.string.set_listener_on else R.string.set_listener_off),
@@ -110,11 +123,80 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(Intent(this, ModelActivity::class.java))
         }
 
+        if (model != null) {
+            // 定时自动整理
+            row(
+                getString(R.string.set_ai_auto),
+                if (Prefs.aiAutoEnabled(this)) {
+                    getString(R.string.set_ai_auto_on, Prefs.aiAutoHours(this))
+                } else {
+                    getString(R.string.set_ai_auto_off)
+                },
+            ) {
+                val on = !Prefs.aiAutoEnabled(this)
+                Prefs.setAiAutoEnabled(this, on)
+                // 开关一变就要重排闹钟：关掉要撤掉已排的，打开要立刻排上
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            row(getString(R.string.set_ai_auto_interval), intervalLabel()) { pickInterval() }
+
+            row(getString(R.string.report_entry), getString(R.string.report_need_model_hint)) {
+                startActivity(Intent(this, ReportActivity::class.java))
+            }
+            row(
+                getString(R.string.set_report_day),
+                if (Prefs.reportDayEnabled(this)) {
+                    getString(R.string.set_report_day_on, Prefs.reportDayHour(this))
+                } else {
+                    getString(R.string.set_report_day_off)
+                },
+            ) {
+                Prefs.setReportDayEnabled(this, !Prefs.reportDayEnabled(this))
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            row(
+                getString(R.string.set_report_week),
+                if (Prefs.reportWeekEnabled(this)) {
+                    getString(
+                        R.string.set_report_week_on,
+                        weekDayLabel(Prefs.reportWeekDay(this)),
+                        Prefs.reportWeekHour(this),
+                    )
+                } else {
+                    getString(R.string.set_report_week_off)
+                },
+            ) {
+                Prefs.setReportWeekEnabled(this, !Prefs.reportWeekEnabled(this))
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            row(getString(R.string.set_report_time), getString(R.string.set_report_time)) { pickReportTime() }
+        }
+
+        section(getString(R.string.section_remind))
+        row(
+            getString(R.string.set_strong_alarm),
+            getString(
+                if (Prefs.strongAlarm(this)) R.string.set_strong_alarm_on
+                else R.string.set_strong_alarm_off
+            ),
+        ) {
+            Prefs.setStrongAlarm(this, !Prefs.strongAlarm(this))
+            render()
+        }
+
         section(getString(R.string.section_privacy))
+        val lockOn = Prefs.lockEnabled(this)
         row(
             getString(R.string.set_lock),
-            getString(if (Prefs.lockEnabled(this)) R.string.set_lock_on else R.string.set_lock_off),
+            if (lockOn) getString(R.string.set_lock_on, timeoutLabel()) else getString(R.string.set_lock_off),
         ) { toggleLock() }
+        // 时机只在锁开着的时候才有意义，关着就不显示，免得用户以为设了有用
+        if (lockOn) {
+            row(getString(R.string.set_lock_when), timeoutLabel()) { pickLockTimeout() }
+        }
         row(
             getString(R.string.set_secure),
             getString(
@@ -132,6 +214,8 @@ class SettingsActivity : AppCompatActivity() {
         row(getString(R.string.set_share), getString(R.string.set_share_sub)) { shareText() }
         row(getString(R.string.set_share_file), getString(R.string.set_share_file_sub)) { shareFile() }
         row(getString(R.string.set_clear), getString(R.string.set_clear_sub)) { confirmClear() }
+        row(getString(R.string.backup_export), getString(R.string.backup_export_sub)) { exportBackup() }
+        row(getString(R.string.backup_restore), getString(R.string.backup_restore_sub)) { pickBackup() }
 
         section(getString(R.string.section_about))
         body(getString(R.string.about_body, versionName()))
@@ -182,6 +266,23 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun listenerGranted(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    /** 最后一次收到消息是多久前，给「监听状态」那行做副标题。 */
+    private fun lastAgo(): String {
+        val ts = runCatching { db.lastMessageTs() }.getOrDefault(0L)
+        if (ts <= 0L) return getString(R.string.health_never_short)
+        val gap = System.currentTimeMillis() - ts
+        val min = gap / 60_000L
+        val hour = gap / 3_600_000L
+        val day = gap / 86_400_000L
+        return when {
+            min < 1 -> "刚刚"
+            min < 60 -> "$min 分钟前"
+            hour < 24 -> "$hour 小时前"
+            day < 30 -> "$day 天前"
+            else -> (day / 30).toString() + " 个月前"
+        }
+    }
 
     private fun ignoringBattery(): Boolean = try {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -286,7 +387,108 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- AI 定时 / 报告时间 ----------
+
+    private fun intervalLabel(): String =
+        getString(R.string.set_ai_auto_on, Prefs.aiAutoHours(this))
+
+    private fun pickInterval() {
+        val hours = intArrayOf(1, 3, 6, 12, 24)
+        val labels = hours.map { "$it 小时" }.toTypedArray()
+        val checked = hours.indexOf(Prefs.aiAutoHours(this)).coerceAtLeast(0)
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.set_ai_auto_interval)
+            .setSingleChoiceItems(labels, checked) { d, which ->
+                Prefs.setAiAutoHours(this, hours[which])
+                d.dismiss()
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun weekDayLabel(d: Int): String =
+        arrayOf("一", "二", "三", "四", "五", "六", "日")[(d - 1).coerceIn(0, 6)]
+
+    /** 推送时间。日报和周报分开设，弹一层列表让用户先选改哪个。 */
+    private fun pickReportTime() {
+        val items = arrayOf(
+            "日报 ${"%02d".format(Prefs.reportDayHour(this))}:00",
+            "周报 周${weekDayLabel(Prefs.reportWeekDay(this))} " +
+                "${"%02d".format(Prefs.reportWeekHour(this))}:00",
+        )
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.set_report_time)
+            .setItems(items) { _, which ->
+                if (which == 0) pickHour { h -> Prefs.setReportDayHour(this, h) }
+                else pickWeekDay()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun pickHour(onPick: (Int) -> Unit) {
+        val labels = (0..23).map { "%02d:00".format(it) }.toTypedArray()
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.set_report_time)
+            .setSingleChoiceItems(labels, -1) { d, which ->
+                onPick(which)
+                d.dismiss()
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun pickWeekDay() {
+        val labels = (1..7).map { "周${weekDayLabel(it)}" }.toTypedArray()
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.set_report_week)
+            .setSingleChoiceItems(labels, Prefs.reportWeekDay(this) - 1) { d, which ->
+                Prefs.setReportWeekDay(this, which + 1)
+                d.dismiss()
+                AiSchedule.rescheduleAll(this)
+                render()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     // ---------- 隐私 ----------
+
+    /**
+     * 重新验证时机。
+     *
+     * 从最严到最松。默认 1 分钟：切出去回个消息再回来不用重按指纹，
+     * 但手机交给别人超过一分钟就得重新验证。
+     */
+    private fun timeoutLabel(): String = msLabel(Prefs.lockTimeout(this))
+
+    private fun msLabel(ms: Long): String = when {
+        ms < 0L -> getString(R.string.lock_when_never)
+        ms == 0L -> getString(R.string.lock_when_now)
+        ms >= 1_800_000L -> getString(R.string.lock_when_30m)
+        ms >= 300_000L -> getString(R.string.lock_when_5m)
+        ms >= 60_000L -> getString(R.string.lock_when_1m)
+        else -> getString(R.string.lock_when_30s)
+    }
+
+    private fun pickLockTimeout() {
+        val values = longArrayOf(0L, 30_000L, 60_000L, 300_000L, 1_800_000L, -1L)
+        val labels = values.map { msLabel(it) }.toTypedArray()
+        val checked = values.indexOf(Prefs.lockTimeout(this)).coerceAtLeast(0)
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.set_lock_when)
+            .setSingleChoiceItems(labels, checked) { d, which ->
+                Prefs.setLockTimeout(this, values[which])
+                d.dismiss()
+                render()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
 
     /** 开关防截屏。不用重启界面，FLAG_SECURE 可以随时加上或去掉。 */
     private fun toggleSecure() {
@@ -305,7 +507,7 @@ class SettingsActivity : AppCompatActivity() {
                 this,
                 onSuccess = {
                     Prefs.setLockEnabled(this, false)
-                    Lock.unlocked = true
+                    Lock.markUnlocked()
                     render()
                     toast(getString(R.string.lock_off_toast))
                 },
@@ -320,7 +522,7 @@ class SettingsActivity : AppCompatActivity() {
                 this,
                 onSuccess = {
                     Prefs.setLockEnabled(this, true)
-                    Lock.unlocked = true
+                    Lock.markUnlocked()
                     render()
                     toast(getString(R.string.lock_on_toast))
                 },
@@ -486,6 +688,69 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    // ---------- 备份 / 恢复 ----------
+
+    /**
+     * 导出全部数据。
+     *
+     * 这是明文 JSON，里面有全部聊天记录。写入的是系统「下载」目录，
+     * 别的应用（文件管理器、网盘自动同步）也可能读到——这一点必须在
+     * 导出之后的提示里说清楚，不能只发个「成功」。
+     */
+    private fun exportBackup() {
+        toast(getString(R.string.backup_exporting))
+        io.execute {
+            val json = try {
+                Backup.export(this)
+            } catch (t: Throwable) {
+                null
+            }
+            val uri = if (json == null) {
+                null
+            } else {
+                runCatching {
+                    Exporter.saveToDownloads(this, json, Exporter.Format.JSON, "wxmsglog-backup-")
+                }.getOrNull()
+            }
+            ui.post {
+                if (uri == null) {
+                    toast(getString(R.string.export_fail))
+                } else {
+                    toast(getString(R.string.backup_export_ok))
+                }
+            }
+        }
+    }
+
+    private fun confirmRestore(uri: android.net.Uri) {
+        AlertDialog.Builder(this, R.style.Theme_WxMsgLog_Dialog)
+            .setTitle(R.string.backup_restore)
+            .setMessage(R.string.backup_restore_confirm)
+            .setPositiveButton(R.string.confirm) { _, _ -> doRestore(uri) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun doRestore(uri: android.net.Uri) {
+        toast(getString(R.string.backup_restoring))
+        io.execute {
+            val text = Backup.read(this, uri)
+            val r = if (text == null) {
+                Backup.Result(0, 0, 0, getString(R.string.backup_read_fail))
+            } else {
+                Backup.restore(this, text)
+            }
+            ui.post {
+                if (r.error != null) {
+                    toast(r.error)
+                } else {
+                    toast(getString(R.string.backup_restore_ok, r.messages, r.todos, r.reports))
+                }
+                render()
+            }
+        }
     }
 
     private fun toast(msg: String) {

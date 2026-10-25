@@ -29,7 +29,8 @@ sealed class Row {
         enum class Kind { APP, SENDER }
     }
 
-    class Msg(val message: Message) : Row()
+    /** @param repeat 折叠了几条。1 表示没有重复。 */
+    class Msg(val message: Message, val repeat: Int = 1) : Row()
 }
 
 /**
@@ -98,7 +99,7 @@ class GroupedAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val r = rows[position]) {
             is Row.Header -> (holder as HeaderVH).bind(r)
-            is Row.Msg -> (holder as MsgVH).bind(r.message)
+            is Row.Msg -> (holder as MsgVH).bind(r.message, r.repeat)
         }
     }
 
@@ -133,13 +134,14 @@ class GroupedAdapter(
         private val tvTime: TextView = view.findViewById(R.id.tvTime)
         private val tvBody: TextView = view.findViewById(R.id.tvBody)
 
-        fun bind(m: Message) {
+        fun bind(m: Message, repeat: Int = 1) {
             val ctx = itemView.context
             val bg = ContextCompat.getColor(ctx, R.color.hl_bg)
             tvSource.visibility = View.GONE
             tvSender.text = mark(m.sender, bg)
             tvSender.visibility = if (hideSender) View.GONE else View.VISIBLE
-            tvTime.text = TimeFmt.friendly(m.ts)
+            // 折叠过的在时间后面带个 ×N，一眼看出这一格挤了几条
+            val timeText = TimeFmt.friendly(m.ts) + if (repeat > 1) " ×$repeat" else ""
             tvBody.text = mark(m.body, bg)
 
             val picked = selected.contains(m.id)
@@ -147,11 +149,7 @@ class GroupedAdapter(
                 if (picked) ContextCompat.getColor(ctx, R.color.sel_bg) else 0
             )
             // 多选状态下打勾用时间那一栏改画勾，位置固定，不会让标题跳来跳去
-            tvTime.text = if (selecting) {
-                if (picked) "✓ 已选" else TimeFmt.friendly(m.ts)
-            } else {
-                TimeFmt.friendly(m.ts)
-            }
+            tvTime.text = if (selecting && picked) "✓ 已选" else timeText
             if (selecting && picked) {
                 tvTime.setTextColor(ContextCompat.getColor(ctx, R.color.primary))
             } else {

@@ -35,6 +35,12 @@ class TodoActivity : AppCompatActivity() {
     private lateinit var warnBar: LinearLayout
     private lateinit var tvWarn: TextView
     private lateinit var btnWarn: Button
+    private lateinit var searchRow: View
+    private lateinit var etSearch: android.widget.EditText
+
+    /** 全量待办。搜索只是在上面对一遍，不重新查库。 */
+    private var allTodos: List<Todo> = emptyList()
+    private var query: String = ""
 
     private val io = Executors.newSingleThreadExecutor()
     private val ui = Handler(Looper.getMainLooper())
@@ -56,6 +62,24 @@ class TodoActivity : AppCompatActivity() {
         tvWarn = findViewById(R.id.tvTodoWarn)
         btnWarn = findViewById(R.id.btnTodoPerm)
 
+        searchRow = findViewById(R.id.searchRow)
+        etSearch = findViewById(R.id.etTodoSearch)
+        etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                query = s?.toString().orEmpty()
+                applyFilter()
+            }
+
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+        })
+        findViewById<View>(R.id.btnSearchClose).setOnClickListener {
+            query = ""
+            etSearch.setText("")
+            etSearch.clearFocus()
+            searchRow.visibility = View.GONE
+        }
+
         adapter = TodoAdapter(
             { t -> toggle(t) },
             { t -> showEditor(t) },
@@ -67,6 +91,8 @@ class TodoActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
         findViewById<ImageButton>(R.id.btnAdd).setOnClickListener { showEditor(null) }
         btnWarn.setOnClickListener { warnAction() }
+        findViewById<TextView>(R.id.btnAiScan).setOnClickListener { aiScan() }
+        findViewById<TextView>(R.id.btnMore).setOnClickListener { anchor -> showMore(anchor) }
 
         TodoNotify.ensureChannel(this)
         // 闹钟不跨重启保留，每次进这一页都重排一遍，成本可以忽略
@@ -81,6 +107,8 @@ class TodoActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 离开太久就退回主界面，由它统一弹验证
+        if (Ui.closeIfLocked(this)) return
         refresh()
         updateWarn()
     }
@@ -90,8 +118,63 @@ class TodoActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    // ---------- 列表 ----------
+    // ---------- AI 整理 / 更多菜单 ----------
 
+    /**
+     * 让 AI 把上次扫过之后的新消息过一遍。
+     *
+     * 真正的活在 [AiService] 里跑：加载模型要 1.5G 内存、跑几十秒，
+     * 在页面线程里做只会卡住界面，切走还会被系统回收。
+     */
+    private fun aiScan() {
+        if (ModelStore.current(this) == null || !Llm.available()) {
+            toast(getString(R.string.ai_scan_no_model))
+            startActivity(Intent(this, ModelActivity::class.java))
+            return
+        }
+        if (AiAggregate.backlog(this) <= 0) {
+            toast(getString(R.string.ai_scan_no_new))
+            return
+        }
+        AiService.start(this, AiService.ACTION_SCAN)
+        toast(getString(R.string.ai_scan_started))
+    }
+
+    private fun showMore(anchor: View) {
+        val popup = android.widget.PopupMenu(this, anchor)
+        popup.menu.add(0, MENU_SEARCH, 0, getString(R.string.todo_search))
+        popup.menu.add(0, MENU_HISTORY, 1, getString(R.string.todo_history_title))
+        popup.menu.add(0, MENU_REPORT, 2, getString(R.string.report_entry))
+        val strong = if (Prefs.strongAlarm(this)) "✓ " else ""
+        popup.menu.add(0, MENU_STRONG, 3, strong + getString(R.string.set_strong_alarm))
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                MENU_SEARCH -> {
+                    searchRow.visibility = View.VISIBLE
+                    etSearch.requestFocus()
+                    val imm = getSystemService(INPUT_METHOD_SERVICE)
+                        as android.view.inputmethod.InputMethodManager
+                    imm.showSoftInput(etSearch, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+
+                MENU_HISTORY -> startActivity(Intent(this, TodoHistoryActivity::class.java))
+                MENU_REPORT -> startActivity(Intent(this, ReportActivity::class.java))
+                MENU_STRONG -> {
+                    val on = !Prefs.strongAlarm(this)
+                    Prefs.setStrongAlarm(this, on)
+                    toast(
+                        getString(
+                            if (on) R.string.set_strong_alarm_on else R.string.set_strong_alarm_off
+                        )
+                    )
+                }
+            }
+            true
+        }
+        popup.show()
+    }
+
+    // ---------- 列表 ----------
     private fun refresh() {
         io.execute { load() }
     }
@@ -105,8 +188,30 @@ class TodoActivity : AppCompatActivity() {
         val list = db.todos()
         ui.post {
             if (isFinishing || isDestroyed) return@post
-            adapter.submit(list)
-            tvEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+            allTodos = list
+            applyFilter()
+        }
+    }
+
+    /**
+     * 按搜索词过滤。
+     *
+     * 搜索框收起时 query 是空串，等同于不过滤。不重新查库是因为待办本身
+     * 不会太多（几百条封顶），在内存里过一遍比每次敲键盘都打一次 SQL 快。
+     */
+    private fun applyFilter() {
+        val q = query.trim()
+        val shown = if (q.isEmpty()) {
+            allTodos
+        } else {
+            allTodos.filter { it.text.contains(q, ignoreCase = true) }
+        }
+        adapter.submit(shown)
+        tvEmpty.visibility = if (shown.isEmpty()) View.VISIBLE else View.GONE
+        if (shown.isEmpty() && q.isNotEmpty()) {
+            tvEmpty.text = getString(R.string.todo_search_empty, q)
+        } else if (shown.isEmpty()) {
+            tvEmpty.text = getString(R.string.todo_empty)
         }
     }
 
@@ -286,5 +391,10 @@ class TodoActivity : AppCompatActivity() {
         const val EXTRA_TEXT = "prefill_text"
 
         private const val REQ_NOTIFY = 201
+
+        private const val MENU_SEARCH = 4
+        private const val MENU_HISTORY = 1
+        private const val MENU_REPORT = 2
+        private const val MENU_STRONG = 3
     }
 }

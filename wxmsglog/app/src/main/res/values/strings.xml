@@ -156,6 +156,28 @@
     <string name="section_scope">记录范围</string>
     <string name="section_ai">AI</string>
     <string name="section_privacy">隐私</string>
+    <string name="src_share">手动分享</string>
+    <string name="share_saved">已存入记录</string>
+    <string name="share_duplicate">这段内容之前存过了</string>
+
+    <!-- ===== 监听健康度 ===== -->
+    <string name="health_title">监听状态</string>
+    <string name="health_rebind">重启监听</string>
+    <string name="health_rebind_done">已请求重绑，几秒后生效</string>
+    <string name="health_section_status">现在</string>
+    <string name="health_section_apps">各应用</string>
+    <string name="health_off_listener">监听使用权没开，现在一条消息也收不到</string>
+    <string name="health_never">监听已开启，但还没收到过任何消息</string>
+    <string name="health_last">最后一条 %1$s</string>
+    <string name="health_never_short">从未</string>
+    <string name="health_notify_on">已允许</string>
+    <string name="health_notify_off">被系统拦了，到点不会弹提醒</string>
+    <string name="health_stale">超过 24 小时没动静，可能断了</string>
+    <string name="health_dead">超过 3 天没动静，多半已经断了</string>
+    <string name="health_app_line">%1$s · 最近 7 天 %2$d 条 / 共 %3$d 条</string>
+    <string name="health_empty">还没有收到任何消息。先确认上面的监听使用权开了。</string>
+    <string name="ctx_copy">复制这条</string>
+    <string name="ctx_repeat">×%1$d</string>
     <string name="section_data">数据</string>
     <string name="section_about">关于</string>
 
@@ -181,8 +203,15 @@
     <string name="set_all_apps_off">关闭中，只记录上面勾选的应用</string>
 
     <string name="set_lock">应用锁（指纹 / 锁屏密码）</string>
-    <string name="set_lock_on">已开启，每次打开都要验证</string>
+    <string name="set_lock_on">已开启 · %1$s</string>
     <string name="set_lock_off">未开启，点这里开启</string>
+    <string name="set_lock_when">重新验证时机</string>
+    <string name="lock_when_now">一离开就重新验证</string>
+    <string name="lock_when_30s">离开 30 秒后重新验证</string>
+    <string name="lock_when_1m">离开 1 分钟后重新验证</string>
+    <string name="lock_when_5m">离开 5 分钟后重新验证</string>
+    <string name="lock_when_30m">离开 30 分钟后重新验证</string>
+    <string name="lock_when_never">不再重新验证（仅进程启动时验证一次）</string>
 
     <string name="set_secure">禁止截屏与录屏</string>
     <string name="set_secure_on">已开启，系统截图和最近任务缩略图都会是黑屏</string>
@@ -268,6 +297,10 @@
     <string name="model_status_off">还没装模型。下面挑一个下载，或者从手机里导入已有的 .gguf 文件。</string>
 
     <string name="model_section_builtin">可下载</string>
+    <string name="model_gen_hint">用来抽待办、写摘要。选了哪个就用哪个。</string>
+    <string name="model_section_embed">向量模型（语义搜索）</string>
+    <string name="model_embed_hint">装好就能用，不用选。它不写字，只把消息变成向量，让「搜意思」成为可能。</string>
+    <string name="model_state_embed_ready">已就绪，语义搜索可以直接用</string>
     <string name="model_section_extra">本地文件</string>
     <string name="model_section_import">从文件导入</string>
     <string name="model_section_ai">待办识别</string>
@@ -310,6 +343,101 @@
     <string name="model_ai_need_model">先装一个模型才能打开</string>
     <string name="model_ai_on">已开启。规则拿不准的消息会再问一遍模型，慢一点但漏得少。</string>
     <string name="model_ai_off">已关闭。只用本地规则识别，快。</string>
+
+    <!-- ===== 强提醒 ===== -->
+    <string name="todo_notify_title_again">待办提醒 · 第 %1$d 次</string>
+    <string name="todo_notify_done">完成</string>
+    <string name="todo_notify_later">10 分钟后</string>
+    <string name="set_strong_alarm">强提醒</string>
+    <string name="set_strong_alarm_on">已开启。到点没处理，每 5 分钟再响一次，最多三轮</string>
+    <string name="set_strong_alarm_off">已关闭。到点只响一次</string>
+
+    <!-- ===== 待办历史 ===== -->
+    <string name="todo_history_title">历史待办</string>
+    <string name="todo_search">搜索待办</string>
+    <string name="todo_search_hint">在这一堆待办里找一条</string>
+    <string name="todo_search_empty">没有包含「%1$s」的待办</string>
+
+    <!-- ===== 备份 / 恢复 ===== -->
+    <string name="backup_export">导出完整备份</string>
+    <string name="backup_export_sub">消息 + 待办 + 报告打包成一个 JSON，存到「下载」目录</string>
+    <string name="backup_restore">从备份恢复</string>
+    <string name="backup_restore_sub">挑一个之前导出的 JSON，把数据导回来</string>
+    <string name="backup_exporting">正在打包…</string>
+    <string name="backup_export_ok">已存到「下载」目录。注意：这是明文文件，里面有全部聊天记录</string>
+    <string name="backup_restoring">正在导入…</string>
+    <string name="backup_restore_confirm">会把备份里的数据合并进来。\n\n消息按内容去重，导入多次不会重复；待办和报告没有唯一键，重复导入会出现两份。</string>
+    <string name="backup_restore_ok">导入完成：消息 %1$d 条、待办 %2$d 条、报告 %3$d 份</string>
+    <string name="backup_read_fail">读不到这个文件</string>
+    <string name="todo_more">更多</string>
+    <string name="section_remind">提醒</string>
+    <string name="todo_history_entry">历史</string>
+    <string name="todo_history_empty">这一天没有记录的待办</string>
+    <string name="todo_history_pick">选择日期</string>
+    <string name="todo_history_today">今天</string>
+    <string name="todo_history_count">%1$d 条 · 完成 %2$d 条</string>
+
+    <!-- ===== AI 聚合 ===== -->
+    <string name="ai_scan">AI 整理</string>
+    <string name="ai_scan_running">正在分析…</string>
+    <string name="ai_scan_started">AI 开始整理，完成后会通知你</string>
+    <string name="ai_scan_no_model">先去设置里装一个模型</string>
+    <string name="ai_scan_no_new">没有新消息需要分析</string>
+    <string name="ai_scan_done">新增 %1$d 条待办</string>
+    <string name="ai_scan_none">看了 %1$d 条，没找到要办的事</string>
+    <string name="ai_scan_fail">分析失败：%1$s</string>
+
+    <string name="set_ai_auto">定时自动整理</string>
+    <string name="set_ai_auto_on">每 %1$d 小时自动跑一次</string>
+    <string name="set_ai_auto_off">已关闭。只在你点「AI 整理」时跑</string>
+    <string name="set_ai_auto_need_model">需要先装模型</string>
+    <string name="set_ai_auto_interval">自动整理间隔</string>
+    <string name="ai_last_scan">上次整理：%1$s</string>
+    <string name="ai_last_scan_never">还没整理过</string>
+
+    <!-- ===== 日报 / 周报 ===== -->
+    <string name="report_title">日报与周报</string>
+    <string name="report_entry">日报 / 周报</string>
+    <string name="report_tab_day">日报</string>
+    <string name="report_tab_week">周报</string>
+    <string name="report_empty">还没有生成过，点右上角生成一份</string>
+    <string name="report_generate">生成</string>
+    <string name="report_generating">正在生成…</string>
+    <string name="report_generated">已生成</string>
+    <string name="report_gen_fail">这段时间没有可归纳的消息</string>
+    <string name="report_delete_confirm">删除这份报告？</string>
+    <string name="report_need_model_hint">没装模型也能生成，只是没有「要点」那一段，只有条数统计和待办清单。</string>
+
+    <string name="set_report_day">每日日报</string>
+    <string name="set_report_day_on">每天 %1$d:00 自动生成并提醒</string>
+    <string name="set_report_day_off">已关闭</string>
+    <string name="set_report_week">每周周报</string>
+    <string name="set_report_week_on">每周%1$s %2$d:00 自动生成并提醒</string>
+    <string name="set_report_week_off">已关闭</string>
+    <string name="set_report_time">推送时间</string>
+
+    <!-- ===== 语义搜索 ===== -->
+    <string name="vec_title">语义搜索</string>
+    <string name="vec_hint">描述一下你在找什么，不用记原话</string>
+    <string name="vec_search">搜索</string>
+    <string name="vec_searching">正在搜索…</string>
+    <string name="vec_need_model">还没装向量模型。点这里去下载 BGE（46M）</string>
+    <string name="vec_need_index">已装模型，但还没建索引。点这里开始建（几十秒到几分钟）</string>
+    <string name="vec_ready">索引就绪，共 %1$d 条消息可搜</string>
+    <string name="vec_index_started">已开始建索引，完成后会通知你</string>
+    <string name="vec_no_hit">没找到和「%1$s」意思相近的消息</string>
+    <string name="vec_hits">找到 %1$d 条</string>
+    <string name="vec_copied">已复制</string>
+
+    <!-- ===== 消息分类 ===== -->
+    <string name="tag_title">消息分类</string>
+    <string name="tag_classify">分类</string>
+    <string name="tag_classifying">正在分类…</string>
+    <string name="tag_classifying_n">正在分类，已处理 %1$d 条</string>
+    <string name="tag_classified">已分类 %1$d 条</string>
+    <string name="tag_untagged">还有 %1$d 条未分类，点右上角「分类」</string>
+    <string name="tag_all_done">全部已分类</string>
+    <string name="tag_empty">没有「%1$s」类的消息</string>
 
     <!-- 待办候选页的 AI 补漏 -->
     <string name="pick_ai">AI 补漏</string>

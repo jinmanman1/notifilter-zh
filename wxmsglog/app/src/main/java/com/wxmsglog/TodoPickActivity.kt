@@ -44,6 +44,8 @@ class TodoPickActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 锁着的状态下从最近任务直接进来，直接退出去让主界面验证
+        if (Ui.closeIfLocked(this)) return
         Ui.applySecureFlag(this)
         setContentView(R.layout.activity_todo_pick)
         Ui.edgeToEdge(this, findViewById(R.id.appBar), findViewById(R.id.pickBottom))
@@ -178,7 +180,10 @@ class TodoPickActivity : AppCompatActivity() {
                 }
                 if (isFinishing || isDestroyed) break
 
-                val hit = LlmExtract.extract(m.body, m.sender, m.ts) ?: continue
+                // 把 now 显式传进去：一轮补漏里「当前时间」必须一致，
+                // 否则每条提示词的时间戳都可能不同，KV 前缀在那一处断开，
+                // native 层的复用就白做了
+                val hit = LlmExtract.extract(m.body, m.sender, m.ts, now) ?: continue
                 // 同一件事可能被拆成两句，按正文去重
                 if (cands.any { it.text == hit.text }) continue
                 if (extra.any { it.text == hit.text }) continue

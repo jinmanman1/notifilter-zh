@@ -34,6 +34,40 @@ object Llm {
     /** native 库是否可用。不可用时整个 AI 功能静默降级，不影响其他功能。 */
     @Volatile private var nativeOk = false
 
+    /** 最后一次用模型的时间。空闲太久就把内存还回去。 */
+    @Volatile private var lastUsedAt: Long = 0L
+
+    /**
+     * 空闲多久之后释放模型。
+     *
+     * 1.7B 加载完常驻要 1.5G。不释放的话，用户用过一次 AI，这块内存就一直
+     * 占着，直到进程被杀——低内存机型会顺手把通知监听服务也干掉，消息就断了。
+     *
+     * 5 分钟是个折中：太短会导致连续操作时反复加载（每次几秒），
+     * 太长等于没释放。
+     */
+    const val IDLE_UNLOAD_MS = 5 * 60_000L
+
+    private fun touch() {
+        lastUsedAt = System.currentTimeMillis()
+    }
+
+    /**
+     * 空闲超时就释放模型。返回是否真的释放了。
+     * 由界面在合适的时机（退到后台一段时间后）调，不做自动定时器。
+     */
+    @Synchronized
+    fun sweepIdle(idleMs: Long = IDLE_UNLOAD_MS): Boolean {
+        if (handle == 0L && embHandle == 0L) return false
+        if (lastUsedAt == 0L) return false
+        if (System.currentTimeMillis() - lastUsedAt < idleMs) return false
+        Log.i(TAG, "空闲超时，释放模型内存")
+        unload()
+        unloadEmbed()
+        lastUsedAt = 0L
+        return true
+    }
+
     init {
         // 加载失败不能让类初始化炸掉。没有这个 catch，只要 .so 因为任何原因没进包
         // （ABI 选错、构建漏编、架构不匹配），任何触碰 Llm 的代码都会在类初始化时
@@ -69,9 +103,20 @@ object Llm {
     /** 正在推理。界面据此禁用按钮，避免重复点。 */
     fun busy(): Boolean = busy
 
-    /** 大核数量。开太多线程反而会因为抢 CPU 和降频变慢，6 个封顶。 */
-    fun threads(): Int =
-        Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
+    /**
+     * 推理线程数。
+     *
+     * 不是越多越好：手机上开满全部核心会因为功耗墙降频，实测反而慢。
+     * 6 条是大多数 8 核机的甜点；核心少的机器留一个给系统，别把界面也拖住。
+     */
+    fun threads(): Int {
+        val cores = Runtime.getRuntime().availableProcessors()
+        return when {
+            cores >= 8 -> 6
+            cores >= 6 -> 5
+            else -> (cores - 1).coerceIn(2, 4)
+        }
+    }
 
     /**
      * 加载模型。耗时几秒（1.3GB 的 mmap 建立 + 张量布局），必须在工作线程调。
@@ -100,6 +145,7 @@ object Llm {
         } else {
             handle = h
             loadedPath = file.absolutePath
+            touch()
             Log.i(TAG, "已加载 ${file.name}，线程 ${threads()}")
             null
         }
@@ -147,6 +193,7 @@ object Llm {
         if (h == 0L) return null
         if (busy) return null
         busy = true
+        touch()
         return try {
             val raw = nativeGenerate(h, prompt, grammar, maxTokens)
             String(raw, Charsets.UTF_8).trim()
@@ -155,6 +202,74 @@ object Llm {
             null
         } finally {
             busy = false
+        }
+    }
+
+    // ---------- 向量模型（语义搜索用） ----------
+    //
+    // 和生成模型是两个独立的会话，可以同时活着：bge 只有 46M，
+    // 跟 1.7B 的生成模型抢不了多少内存。互不干扰也意味着
+    // 「卸载生成模型」不会顺手把语义搜索弄失效。
+
+    private external fun nativeLoadEmbed(path: String): Long
+    private external fun nativeEmbed(handle: Long, text: String): FloatArray
+
+    @Volatile private var embHandle: Long = 0L
+    @Volatile private var embPath: String? = null
+
+    fun embedReady(): Boolean = nativeOk && embHandle != 0L
+
+    fun loadedEmbedPath(): String? = embPath
+
+    @Synchronized
+    fun loadEmbed(file: File): String? {
+        if (!nativeOk) return "这个安装包不含推理引擎"
+        if (!file.exists()) return "向量模型不存在"
+        if (file.length() < 1024 * 1024) return "文件太小，不像模型"
+        if (embHandle != 0L && embPath == file.absolutePath) return null
+
+        unloadEmbed()
+
+        val h = try {
+            nativeLoadEmbed(file.absolutePath)
+        } catch (t: Throwable) {
+            Log.e(TAG, "向量模型加载失败", t)
+            0L
+        }
+        return if (h == 0L) {
+            "向量模型加载失败"
+        } else {
+            embHandle = h
+            embPath = file.absolutePath
+            touch()
+            null
+        }
+    }
+
+    @Synchronized
+    fun unloadEmbed() {
+        val h = embHandle
+        embHandle = 0L
+        embPath = null
+        if (h != 0L) {
+            runCatching { nativeFree(h) }
+        }
+    }
+
+    /**
+     * 把文字变成单位向量。模型没加载或算不出来时返回 null。
+     * 阻塞调用，一条几毫秒。
+     */
+    fun embed(text: String): FloatArray? {
+        val h = embHandle
+        if (h == 0L) return null
+        touch()
+        return try {
+            val v = nativeEmbed(h, text)
+            if (v.isEmpty()) null else v
+        } catch (t: Throwable) {
+            Log.e(TAG, "向量计算失败", t)
+            null
         }
     }
 }

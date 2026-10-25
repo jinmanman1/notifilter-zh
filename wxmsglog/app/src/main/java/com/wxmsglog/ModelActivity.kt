@@ -68,6 +68,8 @@ class ModelActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 离开太久就退回主界面，由它统一弹验证
+        if (Ui.closeIfLocked(this)) return
         val y = if (::scroll.isInitialized) scroll.scrollY else 0
         render()
         if (y > 0) scroll.post { scroll.scrollTo(0, y) }
@@ -103,7 +105,15 @@ class ModelActivity : AppCompatActivity() {
         )
 
         section(getString(R.string.model_section_builtin))
-        for (spec in ModelCatalog.ALL) {
+        body(getString(R.string.model_gen_hint))
+        for (spec in ModelCatalog.GEN) {
+            container.addView(buildCard(spec))
+            divider()
+        }
+
+        section(getString(R.string.model_section_embed))
+        body(getString(R.string.model_embed_hint))
+        for (spec in ModelCatalog.EMBED) {
             container.addView(buildCard(spec))
             divider()
         }
@@ -160,6 +170,9 @@ class ModelActivity : AppCompatActivity() {
         val snap = ModelTask.current()
         val downloading = !snap.finished && snap.specId == spec.id
         val current = ModelStore.current(this)
+        // 向量模型不需要「启用」这一步：它只有一个用途，装好就能被语义搜索找到。
+        // 把它设成「当前模型」反而会让 AI 整理拿它去写摘要，直接炸。
+        val isEmbed = spec.dim > 0
 
         when {
             downloading -> {
@@ -177,9 +190,16 @@ class ModelActivity : AppCompatActivity() {
                 action.setOnClickListener { ModelTask.cancel() }
             }
 
-            file.exists() && current?.absolutePath == file.absolutePath -> {
+            file.exists() && !isEmbed && current?.absolutePath == file.absolutePath -> {
                 bar.visibility = View.GONE
                 state.text = getString(R.string.model_state_in_use)
+                action.text = getString(R.string.model_btn_delete)
+                action.setOnClickListener { confirmDelete(file, spec.name) }
+            }
+
+            file.exists() && isEmbed -> {
+                bar.visibility = View.GONE
+                state.text = getString(R.string.model_state_embed_ready)
                 action.text = getString(R.string.model_btn_delete)
                 action.setOnClickListener { confirmDelete(file, spec.name) }
             }

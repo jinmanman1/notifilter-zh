@@ -36,6 +36,30 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/btnAiScan"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:paddingStart="10dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:text="@string/ai_scan"
+            android:textColor="@color/primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnMore"
+            android:layout_width="40dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/todo_more"
+            android:gravity="center"
+            android:text="⋮"
+            android:textColor="@color/text_secondary"
+            android:textSize="20sp" />
+
         <ImageButton
             android:id="@+id/btnAdd"
             android:layout_width="48dp"
@@ -45,6 +69,46 @@
             android:contentDescription="@string/todo_add"
             android:scaleType="centerInside"
             android:src="@drawable/ic_add" />
+    </LinearLayout>
+
+    <!-- 搜索行，默认收起。从 ⋮ 菜单里打开 -->
+    <LinearLayout
+        android:id="@+id/searchRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/etTodoSearch"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_textbox"
+            android:hint="@string/todo_search_hint"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/hint"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/btnSearchClose"
+            android:layout_width="40dp"
+            android:layout_height="42dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="@color/text_secondary"
+            android:textSize="16sp" />
     </LinearLayout>
 
     <LinearLayout

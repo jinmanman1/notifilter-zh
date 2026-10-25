@@ -18,10 +18,15 @@ object ModelStore {
     /** GGUF 魔数。选错文件是最常见的翻车方式，加载前必须先过的第一道关。 */
     private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
 
+    /** 目录解析一次就够了。它会被 bind、查询、校验反复调用，每次都 mkdirs 是白费 IO。 */
+    @Volatile private var cachedDir: File? = null
+
     fun dir(context: Context): File {
+        cachedDir?.let { if (it.exists()) return it }
         val base = context.getExternalFilesDir(DIR_NAME)
             ?: File(context.filesDir, DIR_NAME)
         if (!base.exists()) base.mkdirs()
+        cachedDir = base
         return base
     }
 
@@ -40,6 +45,21 @@ object ModelStore {
 
     fun setCurrent(context: Context, file: File?) {
         Prefs.setModelPath(context, file?.absolutePath)
+    }
+
+    /**
+     * 向量模型。
+     *
+     * 单独认，不走「当前模型」那套：生成模型和向量模型是两个角色，
+     * 用户可能只装了其中一个，也可能两个都装。按清单里的文件名找，
+     * 不依赖用户选没选。
+     */
+    fun embedModel(context: Context): File? {
+        for (spec in ModelCatalog.EMBED) {
+            val f = File(dir(context), spec.fileName)
+            if (f.exists() && f.length() > 1024 * 1024) return f
+        }
+        return null
     }
 
     /**

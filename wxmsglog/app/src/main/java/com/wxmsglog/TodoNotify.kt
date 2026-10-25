@@ -25,10 +25,15 @@ object TodoNotify {
         )
         ch.description = context.getString(R.string.channel_todo_desc)
         ch.enableVibration(true)
+        ch.vibrationPattern = longArrayOf(0, 400, 200, 400)
         runCatching { nm.createNotificationChannel(ch) }
     }
 
-    fun show(context: Context, item: Todo) {
+    /**
+     * @param round 强提醒第几轮。0 是正常提醒，后面的是补刀，
+     *              标题上会带「第 N 次提醒」让用户知道这不是新的一条。
+     */
+    fun show(context: Context, item: Todo, round: Int = 0) {
         ensureChannel(context)
         // Android 13 起通知要用户授权，没授权直接发会被静默丢掉，先自己判一下
         val nm = NotificationManagerCompat.from(context)
@@ -44,16 +49,58 @@ object TodoNotify {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val n = NotificationCompat.Builder(context, CHANNEL_ID)
+        // 「完成」：直接从通知栏勾掉，不用点进 App
+        val done = PendingIntent.getBroadcast(
+            context,
+            200,
+            Intent(context, TodoAlarmReceiver::class.java).apply {
+                action = TodoAlarmReceiver.ACTION_DONE
+                putExtra(TodoAlarmReceiver.EXTRA_ID, item.id)
+                data = android.net.Uri.parse("wxmsglog://todo/done/${item.id}")
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        // 「稍后」：推 10 分钟
+        val later = PendingIntent.getBroadcast(
+            context,
+            300,
+            Intent(context, TodoAlarmReceiver::class.java).apply {
+                action = TodoAlarmReceiver.ACTION_SNOOZE
+                putExtra(TodoAlarmReceiver.EXTRA_ID, item.id)
+                data = android.net.Uri.parse("wxmsglog://todo/snooze/${item.id}")
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val title = if (round > 0) {
+            context.getString(R.string.todo_notify_title_again, round + 1)
+        } else {
+            context.getString(R.string.todo_notify_title)
+        }
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_todo)
-            .setContentTitle(context.getString(R.string.todo_notify_title))
+            .setContentTitle(title)
             .setContentText(item.text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(item.text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(pi)
-            .build()
+            .addAction(0, context.getString(R.string.todo_notify_done), done)
+            .addAction(0, context.getString(R.string.todo_notify_later), later)
 
-        runCatching { nm.notify(item.id.toInt(), n) }
+        // 强提醒才把锁屏直接点亮。普通提醒就安静待在通知栏，别一惊一乍
+        if (round > 0 || Prefs.strongAlarm(context)) {
+            builder.setFullScreenIntent(pi, true)
+        }
+
+        // 每条待办一个通知 id，同时有几条要办时才不会互相顶掉
+        runCatching { nm.notify(item.id.toInt(), builder.build()) }
+    }
+
+    fun dismiss(context: Context, id: Long) {
+        runCatching { NotificationManagerCompat.from(context).cancel(id.toInt()) }
     }
 }
