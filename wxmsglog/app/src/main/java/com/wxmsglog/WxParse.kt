@@ -40,7 +40,7 @@ object WxParse {
             for (m in style.messages) {
                 val body = m.text?.toString()?.trim().orEmpty()
                 if (body.isEmpty()) continue
-                val person = m.senderPerson?.name?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                val person = m.person?.name?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 val sender = person ?: conversation ?: fallbackTitle.takeIf { it.isNotEmpty() } ?: FALLBACK_SENDER
                 val ts = if (m.timestamp > 0L) m.timestamp else postedAt
                 out.add(Parsed(ts, sender, body, sha1("$sender|$body|${ts / 1000}")))
