@@ -10,7 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 多了编 llama.cpp 这一步，二十分钟起步
+    timeout-minutes: 60
 
     steps:
       - name: 取源码
@@ -33,6 +34,36 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null 2>&1 || true
           echo "平台: $(ls "$ANDROID_HOME/platforms" | tr '\n' ' ')"
+
+      # NDK 一 G 多，每次重下太浪费。路径写死是因为 cache 的 path 不支持变量展开
+      - name: 缓存 NDK 与 CMake
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: ndk-27.0.12077973-cmake-3.22.1
+
+      - name: 安装 NDK 与 CMake
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          echo "NDK: $(ls "$ANDROID_HOME/ndk")"
+
+      # llama.cpp 源码几百兆，不进仓库，按固定 tag 现拉
+      - name: 缓存 llama.cpp
+        id: llamacpp
+        uses: actions/cache@v4
+        with:
+          path: wxmsglog/app/src/main/cpp/llama.cpp
+          key: llama-cpp-v0.7.0
+
+      - name: 拉取 llama.cpp
+        working-directory: wxmsglog
+        run: bash tools/clone_llama.sh
 
       - name: 编译 release
         working-directory: wxmsglog
