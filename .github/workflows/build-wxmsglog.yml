@@ -1,0 +1,74 @@
+name: 编译微信消息存档
+
+on:
+  push:
+    paths:
+      - 'wxmsglog/**'
+      - '.github/workflows/build-wxmsglog.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 取源码
+        uses: actions/checkout@v4
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: 安装 Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: 准备 Android SDK
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null 2>&1 || true
+          echo "平台: $(ls "$ANDROID_HOME/platforms" | tr '\n' ' ')"
+
+      - name: 编译 release
+        working-directory: wxmsglog
+        run: gradle app:assembleRelease --no-daemon --stacktrace
+
+      - name: 取回签名密钥
+        uses: actions/cache@v4
+        with:
+          path: wxmsglog/wx.keystore
+          key: wxmsglog-keystore-v1
+
+      - name: 签名
+        working-directory: wxmsglog
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
+          echo "build-tools: $BT"
+          if [ ! -f wx.keystore ]; then
+            echo "生成新的签名密钥"
+            keytool -genkeypair -v -keystore wx.keystore -storetype PKCS12 \
+              -alias wxmsglog -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass wxmsglog -keypass wxmsglog \
+              -dname "CN=WxMsgLog, O=Personal, C=CN" > /dev/null 2>&1
+          else
+            echo "复用缓存的签名密钥"
+          fi
+          UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+          ls -la "$UNSIGNED"
+          "${BT}zipalign" -f -p 4 "$UNSIGNED" aligned.apk
+          "${BT}apksigner" sign --ks wx.keystore --ks-pass pass:wxmsglog \
+            --key-pass pass:wxmsglog --out ../WxMsgLog.apk aligned.apk
+          "${BT}apksigner" verify --print-certs ../WxMsgLog.apk | head -3
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WxMsgLog
+          path: WxMsgLog.apk
+          if-no-files-found: error

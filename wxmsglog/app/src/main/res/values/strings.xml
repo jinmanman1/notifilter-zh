@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">微信消息存档</string>
+
+    <string name="status_on">已获得通知使用权，正在记录微信消息</string>
+    <string name="status_off">尚未获得通知使用权，现在收不到任何消息</string>
+    <string name="btn_grant">开启通知使用权</string>
+
+    <string name="btn_copy_all">复制全部</string>
+    <string name="btn_copy_today">复制今天</string>
+    <string name="btn_more">更多</string>
+
+    <string name="empty_hint">还没有记录到消息\n\n点上面的按钮开启通知使用权，之后微信来消息就会自动存下来</string>
+
+    <string name="footer_count">共 %1$d 条 · 列表显示最近 %2$d 条</string>
+    <string name="footer_count_all">共 %1$d 条 · 列表显示最近 %2$d 条 · 正在记录所有应用</string>
+
+    <string name="menu_export">导出到「下载」目录</string>
+    <string name="menu_share">分享文本</string>
+    <string name="menu_toggle_all">记录所有应用</string>
+    <string name="menu_clear">清空全部记录</string>
+
+    <string name="copied_n">已复制 %1$d 条消息</string>
+    <string name="copied_one">已复制这条消息</string>
+    <string name="nothing_to_copy">没有可复制的消息</string>
+    <string name="need_permission">请先开启通知使用权</string>
+    <string name="export_ok">已保存到下载目录：%1$s</string>
+    <string name="export_fail">保存失败</string>
+    <string name="cleared">已清空</string>
+    <string name="clear_confirm">删除本地保存的全部消息？此操作不可恢复。</string>
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="truncated_note">\n\n[内容过长已截断，请用「导出到下载目录」获取完整记录]</string>
+    <string name="share_title">分享消息记录</string>
+    <string name="clip_label">微信消息</string>
+    <string name="doc_header">微信消息记录，共 %1$d 条</string>
+    <string name="listener_missing">系统里找不到通知使用权设置页，请手动到「设置 → 通知 → 通知使用权」开启</string>
+</resources>

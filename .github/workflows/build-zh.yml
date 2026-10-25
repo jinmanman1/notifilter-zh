@@ -3,6 +3,8 @@ name: 编译 NotiFilter 中文版
 # 建好这个文件、提交后会自动跑一次；以后也可以在 Actions 页面点 "Run workflow" 手动重跑。
 on:
   push:
+    paths:
+      - '.github/workflows/build-zh.yml'
   workflow_dispatch:
 
 jobs:

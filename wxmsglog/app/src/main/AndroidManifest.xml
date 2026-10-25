@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      刻意不声明 android.permission.INTERNET。
+      没有这条权限，Android 在系统层面就会拒绝本应用建立任何网络连接，
+      数据不可能离开这台设备。这是可验证的，不是承诺。
+    -->
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.WxMsgLog">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          exported 必须是 true：绑定方是 system_server（不同 UID）。
+          安全性由 android.permission.BIND_NOTIFICATION_LISTENER_SERVICE 保证，
+          只有系统持有这个签名级权限，其他应用绑不上。
+        -->
+        <service
+            android:name=".WxNotificationService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>
