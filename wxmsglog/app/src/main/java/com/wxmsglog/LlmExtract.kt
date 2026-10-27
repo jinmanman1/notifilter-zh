@@ -212,12 +212,15 @@ object LlmExtract {
         val prompt = render(templateText, body, sender, now)
         if (!Llm.ready()) return Trial(prompt, "", null)
 
+        // 注意不能写成 `try { ... } ?: Trial(...)`：catch 分支是 return（类型 Nothing），
+        // 整个 try 表达式的类型会退化成 Any，后面 raw.isBlank() 就编译不过了
         val raw = try {
             Llm.generate(prompt, GRAMMAR, MAX_TOKENS)
         } catch (t: Throwable) {
             Log.e(TAG, "试跑失败", t)
             return Trial(prompt, "（推理失败：" + (t.message ?: "未知") + "）", null)
-        } ?: Trial(prompt, "（模型没有输出）", null)
+        }
+        if (raw == null) return Trial(prompt, "（模型没有输出）", null)
 
         return Trial(prompt, raw, if (raw.isBlank()) null else parse(raw))
     }

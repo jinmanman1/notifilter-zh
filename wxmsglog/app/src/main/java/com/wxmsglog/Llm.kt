@@ -184,7 +184,8 @@ object Llm {
             handle = h
             loadedPath = file.absolutePath
             touch()
-            Log.i(TAG, "已加载 ${file.name}，线程 ${threads()}")            null
+            Log.i(TAG, "已加载 ${file.name}，线程 ${threads()}")
+            null
         }
     }
 
