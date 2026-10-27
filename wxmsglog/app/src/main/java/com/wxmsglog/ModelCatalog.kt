@@ -57,6 +57,27 @@ object ModelCatalog {
             note = "推荐。占内存约 1.5G，能听懂复杂指令，输出格式也稳。",
             recommended = true,
         ),
+        Spec(
+            id = "qwen3-4b",
+            name = "Qwen3 4B",
+            fileName = "qwen3-4b-q4.gguf",
+            url = OLLAMA + "library/qwen3/blobs/sha256:" +
+                "3e4cb14174460404e7a233e531675303b2fbf7749c02f91864fe311ab6344e4f",
+            bytes = 2_497_280_480L,
+            dim = 0,
+            note = "识别最准，判断力和「懂没懂意思」明显强一档。代价是占内存约 3.5G、速度约为 1.7B 的一半，建议 8G 以上内存的机器用。",
+        ),
+        Spec(
+            id = "qwen3-8b",
+            name = "Qwen3 8B",
+            fileName = "qwen3-8b-q4.gguf",
+            url = OLLAMA + "library/qwen3/blobs/sha256:" +
+                "a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f",
+            bytes = 5_225_374_496L,
+            dim = 0,
+            note = "本地能跑的最强一档。占内存约 6G，要 12G 以上的机器；速度约为 1.7B 的四分之一，" +
+                "每轮会自动少处理一些消息，别在急着用的时候点。",
+        ),
     )
 
     /**

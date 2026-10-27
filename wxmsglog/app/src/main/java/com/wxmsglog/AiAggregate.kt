@@ -27,8 +27,19 @@ object AiAggregate {
         val error: String?,
     )
 
-    /** 单次最多分析多少条。再多手机等不起，用户也会以为死机了。 */
-    private const val MAX_PER_RUN = 40
+    /**
+     * 单次最多分析多少条。
+     *
+     * 按模型大小分档，不是按「用户耐心」猜的：8B 每条约 6~8 秒，40 条就是
+     * 五分钟，用户早就以为死机了；小模型快得多，可以多跑一点，把积压清干净。
+     *
+     * 用文件大小判断档位，比维护一张 id 表可靠——用户自己导入的模型也能自动归类。
+     */
+    private fun maxPerRun(modelBytes: Long): Int = when {
+        modelBytes > 4L * 1024 * 1024 * 1024 -> 12   // 8B 级
+        modelBytes > 2L * 1024 * 1024 * 1024 -> 20   // 4B 级
+        else -> 40                                     // 1.7B 及以下
+    }
 
     /**
      * 第一次跑（水位线为 0）时往回看多久。
@@ -57,8 +68,9 @@ object AiAggregate {
         if (since <= 0L) since = now - FIRST_RUN_WINDOW
 
         // desc = false 取最早的一批，配合水位线往前推，保证不漏不重
+        val limit = maxPerRun(model.length())
         val batch = try {
-            db.queryFiltered(from = since + 1, limit = MAX_PER_RUN, desc = false)
+            db.queryFiltered(from = since + 1, limit = limit, desc = false)
         } catch (t: Throwable) {
             return Result(0, 0, "读消息失败")
         }
@@ -106,7 +118,7 @@ object AiAggregate {
             }
 
             val hit = try {
-                LlmExtract.extract(m.body, m.sender, m.ts, now)
+                LlmExtract.extract(context, m.body, m.sender, m.ts, now)
             } catch (t: Throwable) {
                 // 单条失败不影响后面的
                 null

@@ -22,6 +22,7 @@ object Prefs {
     private const val KEY_PH_ACK = "placeholder_ack"
     private const val KEY_MODEL = "model_path"
     private const val KEY_AI_TODO = "ai_todo_enabled"
+    private const val KEY_PROMPT = "ai_prompt_template"
     private const val KEY_AI_SCAN_AT = "ai_scan_at"
     private const val KEY_AI_AUTO = "ai_auto_enabled"
     private const val KEY_AI_AUTO_HOURS = "ai_auto_hours"
@@ -157,6 +158,16 @@ object Prefs {
 
     fun setAiTodoEnabled(context: Context, value: Boolean) {
         sp(context).edit().putBoolean(KEY_AI_TODO, value).apply()
+    }
+
+    // ---------- AI 提示词 ----------
+
+    /** 用户改过的提示词模板。null 表示没改过，用代码里的默认值。 */
+    fun promptTemplate(context: Context): String? = sp(context).getString(KEY_PROMPT, null)
+
+    /** 传 null 就是恢复默认。 */
+    fun setPromptTemplate(context: Context, value: String?) {
+        sp(context).edit().putString(KEY_PROMPT, value).apply()
     }
 
     // ---------- AI 自动聚合 ----------

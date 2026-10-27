@@ -15,8 +15,8 @@ android {
         applicationId = "com.wxmsglog"
         minSdk = 29
         targetSdk = 35
-        versionCode = 12
-        versionName = "3.7.1"
+        versionCode = 15
+        versionName = "3.7.4"
 
         // 只出 arm64。32 位机型早就不够跑模型了，多一个 ABI 等于多一倍编译时间。
         ndk {

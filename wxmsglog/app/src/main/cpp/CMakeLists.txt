@@ -63,11 +63,30 @@ set(LLAMA_BUILD_IS_DEV      OFF CACHE BOOL "" FORCE)
 # OpenMP 在安卓上要把 libomp 一起塞进来，收益不确定，先关掉。
 set(GGML_OPENMP             OFF CACHE BOOL "" FORCE)
 
-# KleidiAI 是 ARM 官方的微内核库，能再快 10~30%。但它是 git 子模块，
-# 需要 clone_llama.sh 带 --recursive，CI 缓存里那份可能没有子模块。
-# 所以这条先关着：等 -march 这一版的包验证稳定了，再单独开一轮。
-# 要开的话：clone 脚本改成 --recursive，这里改成 ON。
-set(GGML_CPU_KLEIDIAI       OFF CACHE BOOL "" FORCE)
+# ---- KleidiAI：ARM 官方微内核，这是 8B 唯一能真正提速的东西 ----
+#
+# 之前一直关着，因为我误以为它是 git 子模块（需要 clone --recursive）。
+# 实际查过 ggml/src/ggml-cpu/CMakeLists.txt：它用 FetchContent 从
+# github.com/ARM-software/kleidiai 拉 v1.31.0 的源码 tarball（带 MD5 校验），
+# 不需要子模块，也不需要改 clone 脚本。
+#
+# 关键是它支持哪些量化类型。查 kleidiai.cpp 里的 select_kernels：
+#   Q4_0  ✓ 原生
+#   Q4_K  ✓ 原生      ← Q4_K_M 模型的主体就是它
+#   Q8_0  ✓ 原生
+#   Q6_K  ✓ 间接（先反量化再重量化成 Q8_0 走 kernel）
+#   Q2_K / Q3_K / Q5_K / IQ 系列  ✗ 没有 kernel
+#
+# 我们用的 Qwen3 全系是 Q4_K_M = Q4_K + Q6_K 的混合，两层都能被覆盖，
+# 所以整个模型都能吃到加速。ARM 官方在 dotprod 设备上的实测是 matmul 快
+# 1.3~2 倍——8B 每 token 要读 4.87G 权重，这部分省下来就是实打实的。
+#
+# 运行时安全性：KleidiAI 内部会检测 CPU 特性，不支持的机器自动回退到普通
+# kernel，不会崩。但构建期需要能访问 github.com 拉那份 tarball。
+set(GGML_CPU_KLEIDIAI       ON  CACHE BOOL "" FORCE)
+
+# REPACK 默认就是 ON，这里不改。它的作用是加载时把 Q4_0 重排成更适合
+# SIMD 的布局——注意只对 Q4_0 有效，Q4_K_M 吃不到，别指望它。
 set(GGML_LLAMAFILE          OFF CACHE BOOL "" FORCE)
 
 # GPU 后端（Vulkan）也先不编。原因不是不想用，是 Android 上编它要先有 glslc

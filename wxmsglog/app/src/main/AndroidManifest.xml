@@ -102,6 +102,13 @@
             android:parentActivityName=".SettingsActivity" />
 
         <activity
+            android:name=".PromptActivity"
+            android:exported="false"
+            android:label="@string/prompt_title"
+            android:parentActivityName=".SettingsActivity"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".TodoActivity"
             android:exported="false"
             android:label="@string/title_todo"

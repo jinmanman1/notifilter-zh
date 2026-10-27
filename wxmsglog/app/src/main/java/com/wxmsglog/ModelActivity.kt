@@ -280,10 +280,40 @@ class ModelActivity : AppCompatActivity() {
 
     // ---------- 下载 ----------
 
+    /**
+     * 模型跑起来大约要吃多少内存：权重本身 + KV cache + 运行时开销。
+     *
+     * 权重按文件大小算（Q4 量化后基本就是这个量级），KV 和运行时留 1.2G。
+     */
+    private fun neededRamGb(spec: ModelCatalog.Spec): Double =
+        spec.bytes / 1_073_741_824.0 + 1.2
+
+    private fun totalRamGb(): Double {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        val info = android.app.ActivityManager.MemoryInfo()
+        am?.getMemoryInfo(info)
+        return info.totalMem / 1_073_741_824.0
+    }
+
     private fun confirmDownload(spec: ModelCatalog.Spec) {
+        val need = neededRamGb(spec)
+        val total = totalRamGb()
+        // 按总内存的 65% 算可用：Android 自己要占三四 G，厂商定制还要再吃一点，
+        // 再加上微信这类常用应用常驻，留 35% 才踏实。
+        // 判断放在下载前——4.9G 下完了才发现跑不动，那才是真的气人
+        val tight = total > 0 && total * 0.65 < need
+
+        val msg = buildString {
+            append(getString(R.string.model_download_confirm, ModelCatalog.sizeText(spec.bytes)))
+            if (tight) {
+                append("\n\n")
+                append(getString(R.string.model_ram_warn, need, total))
+            }
+        }
+
         AlertDialog.Builder(this)
             .setTitle(spec.name)
-            .setMessage(getString(R.string.model_download_confirm, ModelCatalog.sizeText(spec.bytes)))
+            .setMessage(msg)
             .setPositiveButton(R.string.model_btn_download) { _, _ ->
                 lastDoneId = null
                 ModelTask.start(this, spec)

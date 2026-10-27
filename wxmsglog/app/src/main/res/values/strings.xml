@@ -447,4 +447,41 @@
     <string name="pick_ai_done">AI 补了 %1$d 条</string>
     <string name="pick_ai_zero">AI 也没找到新的</string>
     <string name="pick_ai_limit">消息太多，只分析前 %1$d 条</string>
+
+    <!-- 待办提示词编辑 -->
+    <string name="prompt_title">待办提示词</string>
+    <string name="prompt_reset">恢复默认</string>
+    <string name="set_prompt">待办提示词</string>
+    <string name="set_prompt_default">默认 · 点进去可改，改完立刻试</string>
+    <string name="set_prompt_custom">已修改 · 点进去可改，改完立刻试</string>
+    <string name="prompt_desc">模型抽得准不准，八成看这段提示。改完点下面的「试一下」，拿一条真实消息跑一遍就知道效果，不用等下次整理。</string>
+    <string name="prompt_hint">在这里写提示词</string>
+    <string name="prompt_placeholders">占位符：{{time}} 当前时间 · {{sender}} 发信人（自动带冒号）· {{body}} 消息正文（必填）</string>
+    <string name="prompt_save">保存</string>
+    <string name="prompt_state_default">当前是默认提示词</string>
+    <string name="prompt_state_custom">已修改 · 点右上角可恢复默认</string>
+    <string name="prompt_saved">已保存，下次整理就生效</string>
+    <string name="prompt_reset_confirm">改回默认提示词？你写的这段会被丢掉。</string>
+    <string name="prompt_reset_done">已恢复默认</string>
+    <string name="prompt_err_empty">提示词不能为空</string>
+    <string name="prompt_err_no_body">必须包含 {{body}}，否则模型看不到消息内容</string>
+    <string name="prompt_err_too_long">太长了，上限 %1$d 字</string>
+
+    <string name="prompt_trial_title">试一下</string>
+    <string name="prompt_trial_hint">粘一条消息进来，比如「张三：明天下午三点前把材料发我」</string>
+    <string name="prompt_trial_run">跑一次</string>
+    <string name="prompt_trial_running">正在跑…</string>
+    <string name="prompt_trial_loading">首次要加载模型，可能要十几秒…</string>
+    <string name="prompt_trial_need_msg">先在下面输入一条测试消息</string>
+    <string name="prompt_trial_need_model">还没装模型，先去 设置 → AI 下一个</string>
+    <string name="prompt_trial_load_fail">模型加载失败：%1$s</string>
+    <string name="prompt_trial_yes">抽到了：%1$s\n%2$s</string>
+    <string name="prompt_trial_no">判定：不是待办</string>
+    <string name="prompt_trial_due">截止 %1$s</string>
+    <string name="prompt_trial_no_due">原文没提时间</string>
+    <string name="prompt_trial_raw">模型原始输出：</string>
+    <string name="prompt_trial_empty">（空）</string>
+    <string name="prompt_trial_len">提示词共 %1$d 字符</string>
+
+    <string name="model_ram_warn">⚠ 这个模型跑起来要约 %1$.1f G 内存，这台机器总共 %2$.1f G。装上可能被系统杀掉，建议换小一点的。</string>
 </resources>

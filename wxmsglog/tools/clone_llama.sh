@@ -19,7 +19,9 @@ if [ -f "$DEST/include/llama.h" ]; then
 fi
 
 echo "[llama] 拉取 $VERSION -> $DEST"
-# --depth 1 只取一个快照；不带子模块，KleidiAI 在 CMake 里已经关了
+# --depth 1 只取一个快照。
+# 不带 --recursive：llama.cpp 没有 KleidiAI 子模块，那份源码是 CMake 用
+# FetchContent 从 ARM-software/kleidiai 下 tarball 拿的，构建时自动完成。
 git clone --depth 1 --branch "$VERSION" \
     https://github.com/ggml-org/llama.cpp "$DEST"
 

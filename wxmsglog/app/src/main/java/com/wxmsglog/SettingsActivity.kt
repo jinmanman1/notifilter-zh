@@ -124,6 +124,18 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         if (model != null) {
+            // 提示词。放在模型后面——它是模型装好之后才谈得上的事
+            row(
+                getString(R.string.set_prompt),
+                if (LlmExtract.isCustomized(this)) {
+                    getString(R.string.set_prompt_custom)
+                } else {
+                    getString(R.string.set_prompt_default)
+                },
+            ) {
+                startActivity(Intent(this, PromptActivity::class.java))
+            }
+
             // 定时自动整理
             row(
                 getString(R.string.set_ai_auto),

@@ -1,5 +1,6 @@
 package com.wxmsglog
 
+import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import java.time.LocalDate
@@ -48,12 +49,20 @@ object LlmExtract {
     data class Hit(val text: String, val due: Long)
 
     /**
-     * 单对象，不带编号。
+     * 单对象。多了一个 `todo` 布尔字段——这是这轮的关键改动。
+     *
+     * 原来让模型「不是待办就写空 text」，等于让它用「什么都不写」来表达否定。
+     * 小模型不擅长这种间接表达，它倾向于**硬写点什么**，结果就是闲聊被抽成待办。
+     * 给一个显式的 `"todo": false`，它才有正规的渠道说「这条不算」。
+     *
+     * 字段顺序也刻意排成 todo → text → due：自回归模型是先写 todo 再决定说什么，
+     * 顺序和它做判断的自然顺序一致，比先写正文再补结论要稳。
      *
      * 不开放转义序列：中文待办里不会出现引号，开着反而给模型多一条出错的路。
      */
     private val GRAMMAR = """
-        root ::= "{" ws "\"text\"" ws ":" ws str ws "," ws "\"due\"" ws ":" ws (str | "null") ws "}"
+        root ::= "{" ws "\"todo\"" ws ":" ws bool ws "," ws "\"text\"" ws ":" ws str ws "," ws "\"due\"" ws ":" ws (str | "null") ws "}"
+        bool ::= "true" | "false"
         str  ::= "\"" [^"\\]* "\""
         ws   ::= [ \t\n\r]*
     """.trimIndent()
@@ -90,11 +99,68 @@ object LlmExtract {
     fun available(): Boolean = Llm.ready()
 
     /**
+     * 默认提示词模板。用户可以在 设置 → AI → 提示词 里改，改完不用重装。
+     *
+     * 三个占位符：`{{time}}`、`{{sender}}`、`{{body}}`。用 [render] 填。
+     *
+     * 注意末尾那两个空行——`</think>` 后面必须有换行，模型才会跳过思考段直接
+     * 给答案。少了这两个换行，它会先自言自语几百字，手机上要多跑十几秒。
+     *
+     * 用 listOf + joinToString 而不是 `"""` 原始字符串，是因为 trimIndent 会把
+     * 首尾空行吃掉，末尾那个换行就丢了，而且丢得不明显。
+     */
+    val DEFAULT_PROMPT: String = listOf(
+        "<|im_start|>system",
+        "你是待办提取器。读一条微信消息，判断里面有没有要求「我」去做的事。",
+        "",
+        "只有消息在要求我做某件具体的事时才抽：交东西、回消息、到场、办某个手续。",
+        "这几种一律不抽：",
+        "讲个情况（明天降温、周五团建、我明天出差）",
+        "问问题（你们几点到、明天开会吗）",
+        "评价和应答（这个不错、好的收到、哈哈哈哈）",
+        "说别人要做的事（让他去交、小王会处理）",
+        "广告、验证码、转账通知",
+        "",
+        "text 写成能直接执行的短句，二十字以内，保留对象和动作，" +
+            "去掉「记得」「帮我」「麻烦」这类口头词。" +
+            "due 只在原文有明确时间点或截止时间时才填，格式 yyyy-MM-dd HH:mm，其余写 null。",
+        "",
+        "示例一，有时间：当前时间 2026-10-27 09:00，消息「张三：明天下午三点前把材料发我」",
+        "输出 {\"todo\":true,\"text\":\"三点前发材料\",\"due\":\"2026-10-28 15:00\"}",
+        "",
+        "示例二，没时间：消息「李四：这周得把那个报销的事办了」",
+        "输出 {\"todo\":true,\"text\":\"办报销\",\"due\":null}",
+        "",
+        "示例三，带「记得」但只是关心：消息「妈：明天降温了记得穿厚点」",
+        "输出 {\"todo\":false,\"text\":\"\",\"due\":null}",
+        "",
+        "示例四，讲自己在干嘛：消息「王五：我明天去上海出差」",
+        "输出 {\"todo\":false,\"text\":\"\",\"due\":null}",
+        "",
+        "示例五，问句：消息「赵六：你们明天几点到」",
+        "输出 {\"todo\":false,\"text\":\"\",\"due\":null}",
+        "",
+        "示例六，群里的通知：消息「公告：周五下午团建，地点在西湖」",
+        "输出 {\"todo\":false,\"text\":\"\",\"due\":null}",
+        "<|im_end|>",
+        "<|im_start|>user",
+        "当前时间 {{time}}",
+        "{{sender}}{{body}}",
+        "<|im_end|>",
+        "<|im_start|>assistant",
+        "</think>",
+        "",
+        // 生成起点后再留一个空行：`</think>\n\n` 是跳过思考链的标准写法
+        "",
+    ).joinToString("\n")
+
+    /**
      * 判断一条消息里有没有待办。阻塞调用。
      *
      * @return null 表示「没有待办」「不值得问」或「模型不可用」。
      */
     fun extract(
+        context: Context,
         body: String,
         sender: String,
         msgTs: Long,
@@ -105,7 +171,7 @@ object LlmExtract {
         if (!worthAsking(text)) return null
 
         val raw = try {
-            Llm.generate(buildPrompt(text, sender, now), GRAMMAR, MAX_TOKENS)
+            Llm.generate(render(template(context), text, sender, now), GRAMMAR, MAX_TOKENS)
         } catch (t: Throwable) {
             Log.e(TAG, "推理失败", t)
             return null
@@ -113,6 +179,65 @@ object LlmExtract {
 
         if (raw.isBlank()) return null
         return parse(raw)
+    }
+
+    // ---------- 模板 ----------
+
+    /**
+     * 一次试跑的结果，给设置页的「试一下」用。
+     *
+     * @param prompt 渲染后的完整提示词，用户能看到占位符被换成了什么
+     * @param raw    模型原样吐出来的字符串
+     * @param hit    按当前逻辑解析的结果，null 表示判定为「不是待办」
+     */
+    data class Trial(val prompt: String, val raw: String, val hit: Hit?)
+
+    /** 当前生效的模板。用户改过就用改过的，没改过用默认。 */
+    fun template(context: Context): String =
+        Prefs.promptTemplate(context) ?: DEFAULT_PROMPT
+
+    /** 是否被用户改过。界面上用来显示「已修改」。 */
+    fun isCustomized(context: Context): Boolean = Prefs.promptTemplate(context) != null
+
+    /**
+     * 拿指定模板和当前模型真跑一条，看效果。
+     *
+     * 没有这个功能的话，用户改完提示词只能等下一次整理 40 条才知道好不好，
+     * 试错成本太高。阻塞调用，必须在工作线程。
+     *
+     * 模板由调用方传入而不是从 Prefs 读——编辑页要能用**还没保存**的内容试跑，
+     * 不然每次改一点就得先存一次。
+     */
+    fun trial(templateText: String, body: String, sender: String, now: Long): Trial {
+        val prompt = render(templateText, body, sender, now)
+        if (!Llm.ready()) return Trial(prompt, "", null)
+
+        val raw = try {
+            Llm.generate(prompt, GRAMMAR, MAX_TOKENS)
+        } catch (t: Throwable) {
+            Log.e(TAG, "试跑失败", t)
+            return Trial(prompt, "（推理失败：" + (t.message ?: "未知") + "）", null)
+        } ?: Trial(prompt, "（模型没有输出）", null)
+
+        return Trial(prompt, raw, if (raw.isBlank()) null else parse(raw))
+    }
+
+    /**
+     * 把模板里的占位符换成实际内容。
+     *
+     * 三个占位符缺一不可：`{{body}}` 是消息正文，`{{sender}}` 会自带冒号
+     * （空发信人替换成空串，不会留下孤零零一个冒号），`{{time}}` 是当前时间。
+     *
+     * 替换顺序是先 time、再 sender、最后 body。这样即使消息正文里恰好写了
+     * `{{time}}` 这样的字样，也会因为那一步已经执行过而不会被二次替换。
+     */
+    fun render(template: String, body: String, sender: String, now: Long): String {
+        val text = body.trim()
+        val clipped = if (text.length > FEED_CLIP) text.substring(0, FEED_CLIP) + "…" else text
+        return template
+            .replace("{{time}}", stamp(now))
+            .replace("{{sender}}", if (sender.isNotBlank()) sender.trim() + "：" else "")
+            .replace("{{body}}", clipped)
     }
 
     /**
@@ -139,37 +264,14 @@ object LlmExtract {
 
     // ---------- 提示词 ----------
 
-    /**
-     * 提示词的结构要**刻意固定**：system 段一字不差，user 段开头先写时间。
-     *
-     * 这样连续处理多条消息时，两条提示词的公共前缀能覆盖到「当前时间 …」之后，
-     * native 层的 KV 复用才有一百多个 token 可以省。中间随便插一个变量（比如
-     * 把发信人放前面），公共前缀立刻降到零，优化就废了。
-     */
-    private fun buildPrompt(body: String, sender: String, now: Long): String = buildString {
-        append("<|im_start|>system\n")
-        append("你是待办提取器。判断这条消息里有没有交代「我」去做的事。")
-        append("只输出 JSON，不要解释。text 是待办本身，去掉「记得」「帮我」「麻烦」这类口头词，")
-        append("二十字以内，不是待办就写空字符串；due 是截止时间，格式 yyyy-MM-dd HH:mm，")
-        append("原文没提到时间就写 null。")
-        append("<|im_end|>\n")
-
-        append("<|im_start|>user\n")
-        append("当前时间 ").append(stamp(now)).append('\n')
-        if (sender.isNotBlank()) append(sender).append('：')
-        append(if (body.length > FEED_CLIP) body.substring(0, FEED_CLIP) + "…" else body)
-        append("<|im_end|>\n")
-
-        // Qwen3 默认先想再说。这里在思考段开头就闭合，让它跳过推理链——
-        // 抽待办不需要先想两百字，而那两百字在手机上要跑十几秒。
-        append("<|im_start|>assistant\n")
-        append("<")
-        append("/think>\n\n")
-    }
-
     // ---------- 结果解析 ----------
 
-    /** 抽不出合法内容一律当成「没有待办」，不抛给调用方。 */
+    /**
+     * 抽不出合法内容一律当成「没有待办」，不抛给调用方。
+     *
+     * `todo` 字段是硬闸门：模型说不算，就算 text 里写了东西也不收。
+     * 小模型偶尔会「嘴上说不算、手上还是写了」，这种矛盾输出按不算处理。
+     */
     private fun parse(raw: String): Hit? {
         val o = try {
             JSONObject(raw)
@@ -177,6 +279,8 @@ object LlmExtract {
             Log.w(TAG, "输出不是合法对象: " + raw.take(80))
             return null
         }
+
+        if (!o.optBoolean("todo", false)) return null
 
         val text = clean(o.optString("text"))
         if (text.isEmpty() || text.length > MAX_TEXT) return null

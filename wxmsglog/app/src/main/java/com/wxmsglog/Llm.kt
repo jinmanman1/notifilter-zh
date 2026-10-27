@@ -31,6 +31,9 @@ object Llm {
     @Volatile private var loadedPath: String? = null
     @Volatile private var busy = false
 
+    /** 各核是否同一档。算一次缓存住，null 表示还没算过。 */
+    @Volatile private var uniformCores: Boolean? = null
+
     /** native 库是否可用。不可用时整个 AI 功能静默降级，不影响其他功能。 */
     @Volatile private var nativeOk = false
 
@@ -106,16 +109,51 @@ object Llm {
     /**
      * 推理线程数。
      *
-     * 不是越多越好：手机上开满全部核心会因为功耗墙降频，实测反而慢。
-     * 6 条是大多数 8 核机的甜点；核心少的机器留一个给系统，别把界面也拖住。
+     * 不是越多越好，取决于这台机器的核是不是「一样大」。
+     *
+     * 大小核机器（1+3+4 那种）：线程数超过大核数之后，多出来的线程会被调度到
+     * 小核上。llama.cpp 是把矩阵按行切给各线程、每层结束要同步的，跑在小核上
+     * 的那几条会拖住整轮，所以 6 条封顶反而更快。
+     *
+     * 全大核机器（比如骁龙 8 至尊版那种 2 个 4.32G + 6 个 3.53G，没有小核）：
+     * 没有这个问题，开满 8 条就是实打实的加速。
+     *
+     * 判断依据是各核最大频率是否接近——频率差不到 35% 就当作同一档。
      */
     fun threads(): Int {
         val cores = Runtime.getRuntime().availableProcessors()
+        if (isUniformCores()) return cores.coerceIn(2, 8)
         return when {
             cores >= 8 -> 6
             cores >= 6 -> 5
             else -> (cores - 1).coerceIn(2, 4)
         }
+    }
+
+    /** 各核是不是同一档（全大核 / 全小核）。读不到频率就当不是，走保守分支。 */
+    private fun isUniformCores(): Boolean {
+        uniformCores?.let { return it }
+        val f = maxFreqs()
+        val hi = f.maxOrNull() ?: 0L
+        val lo = f.minOrNull() ?: 0L
+        val r = f.size >= 4 && hi > 0L && (hi - lo).toDouble() / hi < 0.35
+        uniformCores = r
+        if (f.isEmpty()) {
+            Log.w(TAG, "读不到 CPU 频率，按大小核处理")
+        } else {
+            Log.i(TAG, "CPU ${f.size} 核，频率 ${lo / 1000}~${hi / 1000} MHz，${if (r) "全大核" else "大小核"}")
+        }
+        return r
+    }
+
+    /** 各 CPU 核的最大频率（kHz）。读不到的核直接跳过。 */
+    private fun maxFreqs(): List<Long> = try {
+        (0 until Runtime.getRuntime().availableProcessors()).mapNotNull { i ->
+            val p = File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
+            if (p.canRead()) p.readText().trim().toLongOrNull() else null
+        }
+    } catch (t: Throwable) {
+        emptyList()
     }
 
     /**
@@ -146,8 +184,7 @@ object Llm {
             handle = h
             loadedPath = file.absolutePath
             touch()
-            Log.i(TAG, "已加载 ${file.name}，线程 ${threads()}")
-            null
+            Log.i(TAG, "已加载 ${file.name}，线程 ${threads()}")            null
         }
     }
 
